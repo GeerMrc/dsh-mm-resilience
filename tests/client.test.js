@@ -18,6 +18,18 @@ import path from 'node:path'
 
 const root = path.resolve(import.meta.dirname, '..')
 
+/** Depth-first element visitor over captured createElement trees. */
+function walk(node, visit) {
+  if (node === null || node === undefined || typeof node !== 'object') return
+  visit(node)
+  const children = node.props?.children ?? node.children
+  if (Array.isArray(children)) {
+    for (const child of children) walk(child, visit)
+  } else if (children && typeof children === 'object') {
+    walk(children, visit)
+  }
+}
+
 function fakeReact() {
   return {
     // Function components are invoked eagerly (with children folded into
@@ -178,7 +190,7 @@ test('page view renders the official SettingsForm + SettingsValueField tree with
   assert.equal(typeof form.props.onSave, 'function')
   assert.equal(typeof form.props.onDiscard, 'function')
   assert.deepEqual(Object.keys(form.props.labels).sort(), ['readOnly', 'save', 'saveFailed', 'saving', 'unavailable'])
-  // two sections × heading(row with Tooltip ⓘ) + 3 official fields
+  // two sections × heading(row with Tooltip ⓘ) + 3 official fields in cells
   const sections = form.children
   assert.equal(sections.length, 2)
   assert.equal(primitives.calls.tooltips.length, 2, 'one hover ⓘ per section heading')
@@ -187,12 +199,20 @@ test('page view renders the official SettingsForm + SettingsValueField tree with
   assert.deepEqual(ids, ['mmrr-concurrency', 'mmrr-count', 'mmrr-pixels'])
   for (const field of primitives.calls.fields) {
     assert.equal(field.numeric, true)
-    assert.equal(typeof field.help?.label, 'string')
+    assert.equal(field.help, undefined, 'V4: no field-level ⓘ/expandable help')
+    assert.equal(typeof field.hint, 'string', 'single-line hint remains')
     assert.equal(typeof field.onEdit, 'function')
     assert.equal(typeof field.onReset, 'function')
   }
-  // re-apply borderless control below the form, official note styling
-  assert.equal(tree.children[1].props.className, 'mmrr-reapply')
+  // each field wrapped in a .mmrr-cell (breaks the official .field + .field
+  // sibling separator that produced the orphan half-width line)
+  const cells = []
+  walk(tree, (node) => { if (node.props?.className === 'mmrr-cell') cells.push(node) })
+  assert.equal(cells.length, 3)
+  // bottom row: weak re-apply + inline status note (official hint styling)
+  const actionsRow = tree.children[1]
+  assert.equal(actionsRow.props.className, 'mmrr-actions')
+  assert.equal(actionsRow.children[0].props.className, 'mmrr-reapply')
 })
 
 test('summary view renders a plain one-liner span', async () => {

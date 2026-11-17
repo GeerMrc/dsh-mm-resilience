@@ -40,29 +40,18 @@ window.__ModuleLoader__.load({
       formUnavailable: '设置暂不可用', formReadOnly: '只读', formSaveFailed: '保存失败',
       save: '保存', saving: '保存中…',
       sectionLimits: '图片上限',
-      sectionLimitsTip: '每张图片首次入会解析归档一次，此后所有请求不再重发图片字节；原图可按需回看。',
+      sectionLimitsTip: '默认值即 DSH 官方默认（安装即接管一致态）。像素上限保存时应用到全部 pi-ai 模型路由，「恢复默认」同时清除各路由覆盖；DeepSeek 原生路由不受影响。',
       sectionParsing: '图片解析',
-      sectionParsingTip: '解析通过会话当前所选模型进行；非多模态模型则解析不可用（归档不带描述），这是预期行为。',
+      sectionParsingTip: '解析经会话当前所选模型进行；非多模态模型则解析不可用（归档不带描述）。并行数为贴图入会时的前置描述并发，完成后主请求才发出。',
       pixelsLabel: '图片像素上限（宽×高总像素）',
-      pixelsHint: '超出后由官方管线自动等比压缩再发送；默认 2048×2048=官方默认（即不额外压缩）',
-      pixelsHelpLabel: '像素上限说明',
-      pixelsHelpBody: '此设置接管官方参数 requestImagePixelBudget：保存时写入当前全部 pi-ai 模型路由（官方通道）。' + '\n' +
-        '默认 2048×2048（4194304）= DSH 官方默认，不做额外压缩；下调后超限图片由官方管线自动等比压缩。' + '\n' +
-        '常用值：512×512=262144；1024×1024=1048576；2048×2048=4194304（默认）。' + '\n' +
-        '注意：① 上限 2048×2048（入会归一化封顶，再大无效）；② 不覆盖 DeepSeek 原生路由；③ 在模型页编辑过路由后请点「重新应用到全部路由」；④「恢复默认」会同时清除各路由的覆盖值，回到官方默认。',
+      pixelsHint: '超出自动等比压缩（官方管线）；默认 2048×2048=官方默认；上限 2048×2048；保存时应用到全部 pi-ai 路由',
       countLabel: '每条消息解析上限（张）',
-      countHint: '一次输入的前 N 张图片生成机器描述，其余仅归档；默认 20=官方每消息上限（全部获描述）',
-      countHelpLabel: '解析上限说明',
-      countHelpBody: '此上限对应官方每条消息图片准入上限（20/条）的接管语义：默认 20=全部获描述。' + '\n' +
-        '下调后，一次输入超出 N 张的部分仅归档（不带机器描述，可 mm_view_image 回看），可显著降低多图贴入的解析耗时与成本。',
+      countHint: '前 N 张获机器描述，其余仅归档（可 mm_view_image 回看）；默认 20=官方每消息上限',
       concurrencyLabel: '多图解析并行数',
-      concurrencyHint: '一条消息贴多张图时同时进行的解析调用数（1–8，默认 4）；解析完成后主请求才发出',
-      concurrencyHelpLabel: '并行数说明',
-      concurrencyHelpBody: '一条消息贴多张图时，同时进行的单图解析调用数（1–8）。' + '\n' +
-        '解析为顺序前置步骤：全部解析完成（或预算耗尽）后主请求才发出，不与会话模型执行并行冲突。' + '\n' +
-        '调高可加快多图解析，但会增大对同一网关的瞬时请求压力。',
+      concurrencyHint: '一条消息贴多图时同时进行的解析调用数（1–8，默认 4）；解析完成后主请求才发出',
       overridden: '已覆盖', reset: '恢复默认', invalid: '无效值',
       reapply: '重新应用到全部路由',
+      saveDiag: '保存未落库（诊断信息）',
       fanoutApplied: '像素上限已应用到 {n} 条 pi-ai 路由',
       fanoutNoProviders: '未发现 pi-ai 路由，跳过应用',
       fanoutUnavailable: 'llm-pi-ai 命名空间不可用，跳过应用',
@@ -74,29 +63,18 @@ window.__ModuleLoader__.load({
       formUnavailable: 'Settings unavailable', formReadOnly: 'Read-only', formSaveFailed: 'Save failed',
       save: 'Save', saving: 'Saving…',
       sectionLimits: 'Image Limits',
-      sectionLimitsTip: 'Every image is parsed and archived once on first entry; later requests carry zero image bytes; originals re-viewable on demand.',
+      sectionLimitsTip: 'Defaults ARE the DSH official defaults (install = takeover parity). The pixel budget applies to every pi-ai route on save; "Restore default" also clears per-route overrides; DeepSeek native routes are unaffected.',
       sectionParsing: 'Image Parsing',
-      sectionParsingTip: 'Parsing uses the session\u2019s currently selected model; non-multimodal models leave parsing unavailable (archived without description) by design.',
+      sectionParsingTip: 'Parsing uses the session\u2019s currently selected model; non-multimodal models leave parsing unavailable (archived without description). Concurrency bounds the pre-entry describe calls; the main request waits for them.',
       pixelsLabel: 'Image pixel budget (width×height total)',
-      pixelsHint: 'Oversized images are proportionally downscaled by the native pipeline; default 2048×2048 = the official default (no extra downscaling)',
-      pixelsHelpLabel: 'Pixel budget notes',
-      pixelsHelpBody: 'This setting takes over the official requestImagePixelBudget: saving writes it to every current pi-ai model route (official channel).' + '\n' +
-        'Default 2048×2048 (4194304) = the DSH official default (no extra downscaling); lower it and oversized images are proportionally downscaled by the native pipeline.' + '\n' +
-        'Common values: 512×512=262144; 1024×1024=1048576; 2048×2048=4194304 (default).' + '\n' +
-        'Notes: ① capped at 2048×2048 (intake normalization ceiling); ② DeepSeek native routes are not covered; ③ after editing routes on the Models page press "Re-apply to all routes"; ④ "Restore default" also clears every route override, returning to the official default.',
+      pixelsHint: 'Oversized images auto-downscale (native pipeline); default 2048×2048 = official; ceiling 2048×2048; applies to all pi-ai routes on save',
       countLabel: 'Per-message describe cap (images)',
-      countHint: 'The first N pasted images get a machine description, the rest archive without one; default 20 = the official per-message cap (all described)',
-      countHelpLabel: 'Describe cap notes',
-      countHelpBody: 'This cap mirrors the official per-message image admission limit (20/message): default 20 = all described.' + '\n' +
-        'Lower it and images beyond N in one paste archive without a machine description (re-viewable via mm_view_image), cutting multi-image parse time and cost.',
+      countHint: 'First N pasted images get a machine description, the rest archive (re-viewable via mm_view_image); default 20 = official per-message cap',
       concurrencyLabel: 'Multi-image parse concurrency',
-      concurrencyHint: 'Describe calls running at once when one message pastes several images (1–8, default 4); the main request waits until parsing finishes',
-      concurrencyHelpLabel: 'Concurrency notes',
-      concurrencyHelpBody: 'How many single-image describe calls run at once when one message pastes several images (1–8).' + '\n' +
-        'Parsing is a sequential pre-step: the main request is sent only after parsing finishes (or the budget expires); it never races the session model.' + '\n' +
-        'Higher values speed up multi-image parsing but increase instantaneous load on the same gateway.',
+      concurrencyHint: 'Describe calls running at once for a multi-image paste (1–8, default 4); the main request waits until parsing finishes',
       overridden: 'Overridden', reset: 'Restore default', invalid: 'Invalid',
       reapply: 'Re-apply to all routes',
+      saveDiag: 'Save did not land (diagnostics)',
       fanoutApplied: 'Pixel budget applied to {n} pi-ai route(s)',
       fanoutNoProviders: 'No pi-ai routes found; application skipped',
       fanoutUnavailable: 'llm-pi-ai namespace unavailable; application skipped',
@@ -113,9 +91,11 @@ window.__ModuleLoader__.load({
       '.mmrr-heading{margin:0;font-size:13px;font-weight:600;line-height:1.5;color:var(--dsw-alias-label-primary);}',
       '.mmrr-tip{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:none;background:transparent;color:var(--dsw-alias-label-secondary);padding:0;cursor:default;}',
       '.mmrr-limits{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:16px;}',
-      '.mmrr-limits input{min-width:0;font-variant-numeric:tabular-nums;}',
-      '.mmrr-note{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary);padding-top:8px;}',
-      '.mmrr-reapply{border:none;background:transparent;padding:0 0 12px;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer;}',
+      '.mmrr-cell{min-width:0;}',
+      '.mmrr-cell input{min-width:0;font-variant-numeric:tabular-nums;}',
+      '.mmrr-note{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary);}',
+      '.mmrr-actions{display:flex;align-items:baseline;gap:12px;padding-top:8px;}',
+      '.mmrr-reapply{border:none;background:transparent;padding:0;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer;}',
       '.mmrr-reapply:hover{color:var(--dsw-alias-label-primary);}',
     ].join('\n')
 
@@ -201,7 +181,11 @@ window.__ModuleLoader__.load({
         count: model.field('maxDescribedPerMessage'),
         concurrency: model.field('describeConcurrency'),
       })))
-      useEffect(() => () => { model.dispose() }, [model])
+      useEffect(() => {
+        const snapshot = form.getSnapshot()
+        console.info('[mm-resilience] settings ns snapshot:', JSON.stringify({ status: snapshot.status, writable: snapshot.writable, revision: snapshot.revision }))
+        return () => { model.dispose() }
+      }, [model, form])
       const state = useSyncExternalStore(store.subscribe, store.getSnapshot)
       const [note, setNote] = useState('')
       // Pixel staging drives the save-time fan-out: 'set' writes the value to
@@ -211,11 +195,10 @@ window.__ModuleLoader__.load({
       const { shell, pixels, count, concurrency } = state
       const disabled = !shell.writable || shell.saving
 
-      const fieldProps = (fieldState, key, labelKey, hintKey, helpKey) => ({
+      const fieldProps = (fieldState, key, labelKey, hintKey) => ({
         id: `mmrr-${key}`,
         label: t(labelKey),
         hint: t(hintKey),
-        help: { label: t(helpKey), content: t(`${key}HelpBody`).split('\n').map((line) => createElement('p', { className: 'mmrr-note' }, line)) },
         numeric: true,
         ...fieldState,
         overriddenLabel: t('overridden'),
@@ -229,7 +212,16 @@ window.__ModuleLoader__.load({
         const stagedText = pixels.text
         setNote('')
         await model.save()
-        if (model.shell().failed) return
+        const after = model.shell()
+        if (after.failed) {
+          // Honest production telemetry: the save refused to land — surface
+          // the namespace snapshot essentials so one desktop round-trip pins
+          // the failing hop (all offline layers are proven correct).
+          const snapshot = form.getSnapshot()
+          console.warn('[mm-resilience] save did not land:', JSON.stringify({ failed: after.failed, dirty: after.dirty, ns: { status: snapshot.status, writable: snapshot.writable, revision: snapshot.revision } }))
+          setNote(`${t('saveDiag')}: status=${snapshot.status} writable=${snapshot.writable} revision=${snapshot.revision}`)
+          return
+        }
         setPixelStaged(null)
         if (staged === null) return
         const applied = await fanOutPixelBudget(ctx, staged === 'clear' ? null : Number(stagedText))
@@ -261,26 +253,30 @@ window.__ModuleLoader__.load({
           createElement('section', { className: 'mmrr-section', key: 'limits', 'aria-labelledby': 'mmrr-limits-h' },
             createElement(HeadingWithTip, { id: 'mmrr-limits-h', text: t('sectionLimits'), tip: t('sectionLimitsTip') }),
             createElement('div', { className: 'mmrr-limits' },
-              createElement(SettingsValueField, {
-                ...fieldProps(pixels, 'pixels', 'pixelsLabel', 'pixelsHint', 'pixelsHelpLabel'),
-                onEdit: (text) => { setPixelStaged('set'); actions.edit('maxImagePixels', text) },
-                onReset: () => { setPixelStaged('clear'); actions.resetField('maxImagePixels') },
-              }),
-              createElement(SettingsValueField, {
-                ...fieldProps(count, 'count', 'countLabel', 'countHint', 'countHelpLabel'),
-                onEdit: (text) => actions.edit('maxDescribedPerMessage', text),
-                onReset: () => actions.resetField('maxDescribedPerMessage'),
-              }))),
+              createElement('div', { className: 'mmrr-cell', key: 'cell-pixels' },
+                createElement(SettingsValueField, {
+                  ...fieldProps(pixels, 'pixels', 'pixelsLabel', 'pixelsHint'),
+                  onEdit: (text) => { setPixelStaged('set'); actions.edit('maxImagePixels', text) },
+                  onReset: () => { setPixelStaged('clear'); actions.resetField('maxImagePixels') },
+                })),
+              createElement('div', { className: 'mmrr-cell', key: 'cell-count' },
+                createElement(SettingsValueField, {
+                  ...fieldProps(count, 'count', 'countLabel', 'countHint'),
+                  onEdit: (text) => actions.edit('maxDescribedPerMessage', text),
+                  onReset: () => actions.resetField('maxDescribedPerMessage'),
+                })))),
           createElement('section', { className: 'mmrr-section', key: 'parsing', 'aria-labelledby': 'mmrr-parsing-h' },
             createElement(HeadingWithTip, { id: 'mmrr-parsing-h', text: t('sectionParsing'), tip: t('sectionParsingTip') }),
             createElement('div', { className: 'mmrr-limits' },
-              createElement(SettingsValueField, {
-                ...fieldProps(concurrency, 'concurrency', 'concurrencyLabel', 'concurrencyHint', 'concurrencyHelpLabel'),
-                onEdit: (text) => actions.edit('describeConcurrency', text),
-                onReset: () => actions.resetField('describeConcurrency'),
-              })))),
-        createElement('button', { type: 'button', className: 'mmrr-reapply', onClick: onReapply }, t('reapply')),
-        note ? createElement('p', { className: 'mmrr-note', role: 'status' }, note) : null)
+              createElement('div', { className: 'mmrr-cell', key: 'cell-concurrency' },
+                createElement(SettingsValueField, {
+                  ...fieldProps(concurrency, 'concurrency', 'concurrencyLabel', 'concurrencyHint'),
+                  onEdit: (text) => actions.edit('describeConcurrency', text),
+                  onReset: () => actions.resetField('describeConcurrency'),
+                }))))),
+        createElement('div', { className: 'mmrr-actions' },
+          createElement('button', { type: 'button', className: 'mmrr-reapply', onClick: onReapply }, t('reapply')),
+          note ? createElement('span', { className: 'mmrr-note', role: 'status' }, note) : null))
     }
 
     const inject = ['slots', 'locale', 'configForms']
