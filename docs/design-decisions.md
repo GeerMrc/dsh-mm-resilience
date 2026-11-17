@@ -72,3 +72,33 @@
 | 5 | 🟡 | NumberField 受控于最后一个有效值——清空/输入前缀时显示回弹 | 本地文本 override（parse 回到 draft 值即跟随）+ 丢弃时 resetToken 重挂载；FormController 增 reset() |
 
 复审确认的正面结论：6 条修正全部按代码落地（file:line 勾稽）；契约与 subagent-plus 0.0.4 零漂移；66 项测试无空洞断言；**核心预防目标（贴图零字节搭乘任何请求）完整正确**。修复后 68/68。
+
+## 附录：设置卡官方对齐重构（2026-11-18，用户三轮定向）
+
+### 用户定夺
+
+1. 排版对齐官方「子智能体」插件页卡（`plugins.item` 官方专属不可用 → 第三方保持 `plugins.bundle.config` 通道 + 全套复用官方 ui-primitives 组件：SettingsForm/SettingsValueField/SettingsFormModel/settingsNumberField/Tooltip/IconInfoOutlineRegular）；弃 subagent-plus 式"设置页卡片堆叠"
+2. 解析路由 Provider/Model 移除——路由永远随会话输入框所选模型（打破 session 执行路径的独立路由入口=混乱源；非多模态模型→解析不可用即正确行为；OCR/MCP 属未来独立插件）
+3. 字段=官方参数接管：默认值=官方默认（像素 4,194,304=llm-pi-ai DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET；解析上限 20=attachment-local DEFAULT_MAX_IMAGES_PER_MESSAGE）；恢复默认=官方原生 resetField（清除用户层→重继承默认）
+4. 卡片内零开关：总开关=插件页官方启停开关（关闭→官方自动接管；宿主无 HMR 时可能需重启生效——已披露 README）
+5. 小字说明=区块标题旁 ⓘ 圆图标+官方 Tooltip 悬停（仿插件页顶标题样式）；字段长披露入官方 help ⓘ
+6. 仅保留并发数（多图解析并行数）；超时/预算固化常量（10s/15s）+测试缝参数
+
+### E1 独立计划审核（APPROVE-WITH-FIXES，8 项全采纳）
+
+| # | 修正 | 落地 |
+|---|---|---|
+| 1 | 图标导出名：IconInfoOutlineRegular（IconInfo 不存在） | client/index.js |
+| 2 | 客户端数值范围校验（官方 limitField 模式，越界行内标红） | boundedField |
+| 3 | **恢复默认必须同步 unset 路由侧覆盖**（此前仅 set——"回退官方"只对一半；providers 祖先 volatile 使 unset 合法） | fanOutPixelBudget(budget===null → unset ops) |
+| 4 | onSave 接线：await model.save()+shell().failed 检查+像素暂存判定（set/clear 二态）驱动 fan-out | Card onSave |
+| 5 | 冒烟测试需 fake ui-primitives 模块 | client.test.js |
+| 6 | describe 常量测试缝（timeoutMs/totalBudgetMs 可选参数） | createDescriber |
+| 7 | README：总开关语义+可能需重启披露+测试计数修正 | README |
+| 8 | 历史决策文档补 supersession 注（默认 8→20、enabled 门移除） | 本附录 |
+
+### 历史条目 supersession 注
+
+- 「二次审核修正 2」中 maxDescribedPerMessage 默认 8 → **已被官方接管值 20 取代**（本轮定夺 3）
+- 「复审修复 2」的 per-event enabled 门 → **已移除**（总开关=插件页官方启停，本轮定夺 4）
+- 「复审修复 5」NumberField 本地文本 override → **随手绘字段一并废弃**（官方 SettingsValueField 自带草稿/校验/恢复默认）
