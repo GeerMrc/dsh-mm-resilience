@@ -1,0 +1,6 @@
+# dsh-mm-resilience bundle patch — INSERT envelope (a bare row would be
+# interpreted as an override of an existing entry id and fail admission with
+# `patch: entry "<id>" not found`; verified live in the previous build's T7).
+- insert:
+    - id: mm-resilience
+      name: dsh-mm-resilience

@@ -1,0 +1,46 @@
+{
+  "name": "dsh-mm-resilience",
+  "version": "0.0.1",
+  "private": true,
+  "description": "图片解析归档复用：每张图片首次入会解析一次并归档打标，此后所有请求零图片字节重发，从根源避免多模态故障卡死会话；可设像素上限（官方管线自动等比压缩）与每条消息图片数上限；原图按需回看。",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json",
+    "./client": {
+      "default": "./client/index.js"
+    },
+    "./locale/*.json": "./locale/*.json"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "external": [
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test tests/"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/schemastery": ">=3.18.4 <4"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.1-rc.1 <5",
+    "@deepseek-ai/dsh-llm": ">=0.2.0-rc.1 <0.3.0"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "dsh-mm-resilience",
+    "description": "Every image is parsed once when it first enters the session, archived with a tag, and never re-sent as image bytes in later requests — root-cause prevention of multimodal session wedges. Configurable pixel budget (oversized images auto-downscaled by the native pipeline) and per-message image-count cap; originals re-viewable on demand (mm_view_image)."
+  }
+}
