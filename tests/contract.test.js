@@ -72,3 +72,14 @@ test('locale: zh/en meta present (client matches only zh|en locale ids)', () => 
     assert.notEqual(locale.meta.description, '')
   }
 })
+
+test('client half: prebuilt factory file — classic script shape, package-name id, apply/inject tail', () => {
+  const source = read('client/index.js')
+  // Classic script served verbatim: no ESM syntax survives the check.
+  assert.match(source, /window\.__ModuleLoader__\.load\(\{\s*\n\s*id: 'dsh-mm-resilience'/)
+  assert.doesNotMatch(source, /^\s*export\s/m)
+  assert.doesNotMatch(source, /^\s*import\s/m)
+  assert.match(source, /exports\.apply\s*=\s*apply/)
+  assert.match(source, /exports\.inject\s*=\s*inject/)
+  assert.doesNotMatch(source, /=>\s*<[A-Za-z]/, 'no JSX')
+})
