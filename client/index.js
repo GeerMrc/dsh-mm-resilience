@@ -46,18 +46,28 @@ window.__ModuleLoader__.load({
       pixelsLabel: '图片像素上限（宽×高总像素）',
       pixelsHint: '超出后由官方管线自动等比压缩再发送；默认 2048×2048=官方默认（即不额外压缩）',
       pixelsHelpLabel: '像素上限说明',
+      pixelsHelpBody: '此设置接管官方参数 requestImagePixelBudget：保存时写入当前全部 pi-ai 模型路由（官方通道）。' + '\n' +
+        '默认 2048×2048（4194304）= DSH 官方默认，不做额外压缩；下调后超限图片由官方管线自动等比压缩。' + '\n' +
+        '常用值：512×512=262144；1024×1024=1048576；2048×2048=4194304（默认）。' + '\n' +
+        '注意：① 上限 2048×2048（入会归一化封顶，再大无效）；② 不覆盖 DeepSeek 原生路由；③ 在模型页编辑过路由后请点「重新应用到全部路由」；④「恢复默认」会同时清除各路由的覆盖值，回到官方默认。',
       countLabel: '每条消息解析上限（张）',
       countHint: '一次输入的前 N 张图片生成机器描述，其余仅归档；默认 20=官方每消息上限（全部获描述）',
       countHelpLabel: '解析上限说明',
+      countHelpBody: '此上限对应官方每条消息图片准入上限（20/条）的接管语义：默认 20=全部获描述。' + '\n' +
+        '下调后，一次输入超出 N 张的部分仅归档（不带机器描述，可 mm_view_image 回看），可显著降低多图贴入的解析耗时与成本。',
       concurrencyLabel: '多图解析并行数',
       concurrencyHint: '一条消息贴多张图时同时进行的解析调用数（1–8，默认 4）；解析完成后主请求才发出',
       concurrencyHelpLabel: '并行数说明',
+      concurrencyHelpBody: '一条消息贴多张图时，同时进行的单图解析调用数（1–8）。' + '\n' +
+        '解析为顺序前置步骤：全部解析完成（或预算耗尽）后主请求才发出，不与会话模型执行并行冲突。' + '\n' +
+        '调高可加快多图解析，但会增大对同一网关的瞬时请求压力。',
       overridden: '已覆盖', reset: '恢复默认', invalid: '无效值',
       reapply: '重新应用到全部路由',
       fanoutApplied: '像素上限已应用到 {n} 条 pi-ai 路由',
       fanoutNoProviders: '未发现 pi-ai 路由，跳过应用',
       fanoutUnavailable: 'llm-pi-ai 命名空间不可用，跳过应用',
       fanoutConflict: '路由写入版本冲突（可能有并发编辑），请再次保存重试',
+      fanoutFailed: '路由写入失败（网络/传输错误），请重试',
       summary: '每张图片首次入会解析归档一次，此后请求零图片字节；原图可按需回看。',
     }
     const en = {
@@ -70,18 +80,28 @@ window.__ModuleLoader__.load({
       pixelsLabel: 'Image pixel budget (width×height total)',
       pixelsHint: 'Oversized images are proportionally downscaled by the native pipeline; default 2048×2048 = the official default (no extra downscaling)',
       pixelsHelpLabel: 'Pixel budget notes',
+      pixelsHelpBody: 'This setting takes over the official requestImagePixelBudget: saving writes it to every current pi-ai model route (official channel).' + '\n' +
+        'Default 2048×2048 (4194304) = the DSH official default (no extra downscaling); lower it and oversized images are proportionally downscaled by the native pipeline.' + '\n' +
+        'Common values: 512×512=262144; 1024×1024=1048576; 2048×2048=4194304 (default).' + '\n' +
+        'Notes: ① capped at 2048×2048 (intake normalization ceiling); ② DeepSeek native routes are not covered; ③ after editing routes on the Models page press "Re-apply to all routes"; ④ "Restore default" also clears every route override, returning to the official default.',
       countLabel: 'Per-message describe cap (images)',
       countHint: 'The first N pasted images get a machine description, the rest archive without one; default 20 = the official per-message cap (all described)',
       countHelpLabel: 'Describe cap notes',
+      countHelpBody: 'This cap mirrors the official per-message image admission limit (20/message): default 20 = all described.' + '\n' +
+        'Lower it and images beyond N in one paste archive without a machine description (re-viewable via mm_view_image), cutting multi-image parse time and cost.',
       concurrencyLabel: 'Multi-image parse concurrency',
       concurrencyHint: 'Describe calls running at once when one message pastes several images (1–8, default 4); the main request waits until parsing finishes',
       concurrencyHelpLabel: 'Concurrency notes',
+      concurrencyHelpBody: 'How many single-image describe calls run at once when one message pastes several images (1–8).' + '\n' +
+        'Parsing is a sequential pre-step: the main request is sent only after parsing finishes (or the budget expires); it never races the session model.' + '\n' +
+        'Higher values speed up multi-image parsing but increase instantaneous load on the same gateway.',
       overridden: 'Overridden', reset: 'Restore default', invalid: 'Invalid',
       reapply: 'Re-apply to all routes',
       fanoutApplied: 'Pixel budget applied to {n} pi-ai route(s)',
       fanoutNoProviders: 'No pi-ai routes found; application skipped',
       fanoutUnavailable: 'llm-pi-ai namespace unavailable; application skipped',
       fanoutConflict: 'Route write hit a revision conflict (concurrent edits?); save again to retry',
+      fanoutFailed: 'Route write failed (network/transport error); please retry',
       summary: 'Every image is parsed and archived once on first entry; later requests carry zero image bytes; originals re-viewable on demand.',
     }
 
@@ -142,7 +162,7 @@ window.__ModuleLoader__.load({
         try {
           accepted = await form.mutate(ops, snapshot.revision)
         } catch {
-          return { ok: false, reason: 'conflict' }
+          return { ok: false, reason: 'failed' }
         }
         return accepted ? { ok: true, count: routes.length } : { ok: false, reason: 'conflict' }
       }
@@ -160,33 +180,11 @@ window.__ModuleLoader__.load({
             createElement(IconInfoOutlineRegular, { size: 12 }))))
     }
 
-    /** Field ⓘ help content per key (multi-line disclosures). */
-    function helpContent(key) {
-      if (key === 'pixels') {
-        return [
-          '此设置接管官方参数 requestImagePixelBudget：保存时写入当前全部 pi-ai 模型路由（官方通道）。',
-          '默认 2048×2048（4194304）= DSH 官方默认，不做额外压缩；下调后超限图片由官方管线自动等比压缩。',
-          '常用值：512×512=262144；1024×1024=1048576；2048×2048=4194304（默认）。',
-          '注意：① 上限 2048×2048（入会归一化封顶，再大无效）；② 不覆盖 DeepSeek 原生路由；③ 在模型页编辑过路由后请点「重新应用到全部路由」；④「恢复默认」会同时清除各路由的覆盖值，回到官方默认。',
-        ].join('\n')
-      }
-      if (key === 'count') {
-        return [
-          '此上限对应官方每条消息图片准入上限（20/条）的接管语义：默认 20=全部获描述。',
-          '下调后，一次输入超出 N 张的部分仅归档（不带机器描述，可 mm_view_image 回看），可显著降低多图贴入的解析耗时与成本。',
-        ].join('\n')
-      }
-      return [
-        '一条消息贴多张图时，同时进行的单图解析调用数（1–8）。',
-        '解析为顺序前置步骤：全部解析完成（或预算耗尽）后主请求才发出，不与会话模型执行并行冲突。',
-        '调高可加快多图解析，但会增大对同一网关的瞬时请求压力。',
-      ].join('\n')
-    }
-
     function fanoutNote(t, applied) {
       if (applied.ok) return t('fanoutApplied').replace('{n}', String(applied.count))
       if (applied.reason === 'no-providers') return t('fanoutNoProviders')
       if (applied.reason === 'unavailable') return t('fanoutUnavailable')
+      if (applied.reason === 'failed') return t('fanoutFailed')
       return t('fanoutConflict')
     }
 
@@ -217,7 +215,7 @@ window.__ModuleLoader__.load({
         id: `mmrr-${key}`,
         label: t(labelKey),
         hint: t(hintKey),
-        help: { label: t(helpKey), content: createElement('p', { className: 'mmrr-note' }, helpContent(key)) },
+        help: { label: t(helpKey), content: t(`${key}HelpBody`).split('\n').map((line) => createElement('p', { className: 'mmrr-note' }, line)) },
         numeric: true,
         ...fieldState,
         overriddenLabel: t('overridden'),
@@ -239,7 +237,11 @@ window.__ModuleLoader__.load({
       }
 
       const onReapply = async () => {
-        const applied = await fanOutPixelBudget(ctx, Number(pixels.text))
+        // The COMMITTED value, never the staged draft (an unsaved or invalid
+        // draft must not be fanned out to every route).
+        const committed = ctx.configForms.get(NS).getSnapshot().value?.maxImagePixels
+        if (typeof committed !== 'number' || !Number.isFinite(committed)) return
+        const applied = await fanOutPixelBudget(ctx, committed)
         setNote(fanoutNote(t, applied))
       }
 
@@ -303,7 +305,7 @@ window.__ModuleLoader__.load({
         const view = slotProps?.view ?? 'page'
         if (view === 'summary') return createElement('span', null, t('summary'))
         return createElement(Card, { ctx, t, form: ctx.configForms.get(NS) })
-      }), 'mm-resilience: plugins page card')
+      }))
     }
 
     exports.apply = apply
