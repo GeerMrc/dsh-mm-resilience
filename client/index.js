@@ -6,8 +6,8 @@
  *
  * The Plugins-page card mirrors the OFFICIAL 「子智能体」 card exactly
  * (SubagentCard.tsx pattern): flat sections with h3 headings, the official
- * SettingsForm save bar, SettingsValueField fields (ⓘ help, 已覆盖 badge,
- * 恢复默认), a Tooltip ⓘ beside each section heading, and a
+ * SettingsForm save bar, SettingsValueField fields (已覆盖 badge, 恢复默认),
+ * a Tooltip ⓘ beside each section heading, and a
  * SettingsFormModel over ctx.configForms.get('mm-resilience'). No hand-drawn
  * control chrome remains. Schema defaults ARE the official takeover values,
  * so each field's official 恢复默认 restores the DSH default; resetting the
@@ -274,9 +274,9 @@ window.__ModuleLoader__.load({
                   onEdit: (text) => actions.edit('describeConcurrency', text),
                   onReset: () => actions.resetField('describeConcurrency'),
                 }))))),
-        createElement('div', { className: 'mmrr-actions' },
+        shell.available ? createElement('div', { className: 'mmrr-actions' },
           createElement('button', { type: 'button', className: 'mmrr-reapply', onClick: onReapply }, t('reapply')),
-          note ? createElement('span', { className: 'mmrr-note', role: 'status' }, note) : null))
+          note ? createElement('span', { className: 'mmrr-note', role: 'status' }, note) : null) : null)
     }
 
     const inject = ['slots', 'locale', 'configForms']
