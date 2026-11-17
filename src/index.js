@@ -15,11 +15,12 @@ import { Config, materializeConfig } from './config.js'
 import { collectLiveImageRefs, rewriteMessage } from './blocks.js'
 import { createDescriber } from './describe.js'
 import { egressLiveToolImages } from './egress.js'
+import { createViewImageTool } from './tool.js'
 
 export { Config }
 
 /** Services used at runtime; registrations are scoped effects of `apply`. */
-export const inject = ['llm']
+export const inject = ['llm', 'tools']
 
 /**
  * @param {import('@deepseek-ai/cordis').Context} ctx
@@ -32,6 +33,9 @@ export function apply(ctx, rawConfig) {
     return
   }
   const describer = createDescriber({ llm: ctx.llm, config })
+
+  const { whenHandler, ...toolDefinition } = createViewImageTool({ llm: ctx.llm, describer })
+  ctx.tools.register(toolDefinition, { when: whenHandler })
 
   ctx.on('agent/pre-step', async (payload, next) => {
     // Egress first: pixels from a consumed mm_view_image / read_image result

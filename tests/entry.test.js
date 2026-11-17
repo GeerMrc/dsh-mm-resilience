@@ -69,14 +69,18 @@ async function runPreStep(ctx, payloadOverrides = {}, decisionOverrides = {}) {
   return listener(payload, next)
 }
 
-test('apply registers the pre-step listener only when enabled', () => {
+test('apply registers the pre-step listener and the conditional tool only when enabled', () => {
   const off = fakeContext()
   apply(off, { enabled: true })
   assert.ok(off.listeners.has('agent/pre-step'))
+  assert.equal(off.registeredTools.length, 1)
+  assert.equal(off.registeredTools[0].definition.name, 'mm_view_image')
+  assert.equal(typeof off.registeredTools[0].options.when, 'function')
 
   const disabled = fakeContext()
   apply(disabled, { enabled: { get: () => false } })
   assert.equal(disabled.listeners.has('agent/pre-step'), false)
+  assert.equal(disabled.registeredTools.length, 0)
 })
 
 test('pre-step: claimed images archived with description tag; decision fields spread', async () => {

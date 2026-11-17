@@ -6,7 +6,7 @@
  *
  * @module dsh-mm-resilience/tests/contract.test
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import test from 'node:test'
@@ -26,6 +26,8 @@ test('package manifest: name/type/engines', () => {
 
 test('package manifest: exports map has the exact keys rc.3 discovers', () => {
   assert.deepEqual(Object.keys(pkg.exports).sort(), ['.', './client', './locale/*.json', './package.json'])
+  assert.equal(pkg.exports['.'], './src/index.js')
+  assert.ok(existsSync(path.join(root, 'src/index.js')), 'host half exists at exports["."]')
   // "./client" must be a string or {default: string} (clientExportOf).
   const client = pkg.exports['./client']
   const clientTarget = typeof client === 'string' ? client : client.default
