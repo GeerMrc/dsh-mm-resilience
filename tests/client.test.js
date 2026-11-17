@@ -1,10 +1,13 @@
 /**
- * Client-half smoke test: executes the prebuilt factory file exactly the way
- * the browser would (window.__ModuleLoader__.load capture → factory(require)
- * → apply(fakeCtx)) with fake react/configForms/slots/locale, asserting the
- * registration wiring that makes the plugin-page card visible: factory shape,
- * apply effects, slot registration options (key = package name — the
- * configured-ledger gate), form controller binding, and the b1 fan-out ops.
+ * Client-half smoke test: executes the prebuilt factory exactly the way the
+ * browser would (window.__ModuleLoader__.load capture → factory(require) →
+ * apply(fakeCtx) → render('page'/'summary')) with fake react and a faithful
+ * fake of the ui-primitives surface the card consumes, asserting the wiring
+ * that makes the official-flat card visible: factory shape, unconditional
+ * plugins.bundle.config registration (key = package name), official
+ * component usage (SettingsForm/SettingsValueField/Tooltip present in the
+ * tree), no hand-drawn control chrome, and the b1 fan-out ops (set + unset
+ * restore-official path).
  *
  * @module dsh-mm-resilience/tests/client.test
  */
@@ -16,12 +19,62 @@ import path from 'node:path'
 const root = path.resolve(import.meta.dirname, '..')
 
 function fakeReact() {
-  const { createElement, useState, useSyncExternalStore } = {
- createElement: (type, props, ...children) => ({ type, props, children }),
-    useState: (initial) => [initial, () => {}],
+  return {
+    // Function components are invoked eagerly (with children folded into
+    // props, React-style) so nested official components record their calls.
+    createElement: (type, props, ...children) => {
+      const merged = children.length === 0
+        ? { ...props }
+        : { ...props, children: children.length === 1 ? children[0] : children }
+      if (typeof type === 'function') return type(merged)
+      return { type, props: merged, children: children.length === 1 ? [children[0]] : children }
+    },
+    useEffect: () => {},
+    useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
     useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot(),
   }
-  return { createElement, useState, useSyncExternalStore }
+}
+
+/** Faithful-enough fake of the ui-primitives surface the card consumes. */
+function fakePrimitives() {
+  const calls = { fields: [], forms: [], tooltips: [] }
+  const SettingsForm = (props) => {
+    calls.forms.push(props)
+    return { type: 'SettingsForm', props, children: props.children }
+  }
+  const SettingsValueField = (props) => {
+    calls.fields.push(props)
+    return { type: 'SettingsValueField', props }
+  }
+  class SettingsFormModel {
+    constructor(scope, specs) {
+      this.scope = scope
+      this.specs = specs
+    }
+    bind(project) {
+      return { getSnapshot: project, subscribe: () => () => {} }
+    }
+    shell() {
+      const snapshot = this.scope.getSnapshot()
+      return { available: snapshot.status === 'ready', writable: snapshot.writable !== false, dirty: false, invalid: false, saving: false, failed: false }
+    }
+    field(field) {
+      const snapshot = this.scope.getSnapshot()
+      return { text: String(snapshot.value?.[field] ?? ''), overridden: false, invalid: false }
+    }
+    actions() {
+      return { edit: () => {}, resetField: () => {}, save: async () => {}, discard: () => {} }
+    }
+    async save() {}
+    dispose() {}
+  }
+  const settingsNumberField = (field) => ({ field, format: (v) => String(v), parse: (t) => ({ kind: 'set', value: Number(t) }) })
+  const Tooltip = (props) => {
+    calls.tooltips.push(props)
+    return { type: 'Tooltip', props, children: props.children }
+  }
+  const IconInfoOutlineRegular = (props) => ({ type: 'IconInfoOutlineRegular', props })
+  return { calls, SettingsForm, SettingsValueField, SettingsFormModel, settingsNumberField, Tooltip, IconInfoOutlineRegular }
 }
 
 let loadedClient
@@ -33,100 +86,136 @@ function loadClient() {
     createElement: () => ({ dataset: {}, style: {}, textContent: '', append () {}, remove () {} }),
     head: { append () {} },
   }
+  const react = fakeReact()
+  const primitives = fakePrimitives()
   const require = (specifier) => {
-    if (specifier === 'react') return fakeReact()
+    if (specifier === 'react') return react
+    if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return primitives
     throw new Error(`unexpected require: ${specifier}`)
   }
   loadedClient = (async () => {
     await import(pathToFileURL(path.join(root, 'client/index.js')).href)
-    return { registration: captured, moduleExports: captured.factory(require) }
+    return { registration: captured, moduleExports: captured.factory(require), primitives }
   })()
   return loadedClient
 }
 
-test('factory: registers with the package-name id and returns apply/inject', async () => {
+function formFor(ns) {
+  const listeners = new Set()
+  const value = ns === 'mm-resilience'
+    ? { maxImagePixels: 4_194_304, maxDescribedPerMessage: 20, describeConcurrency: 4 }
+    : { providers: { sz: {}, openai: {} } }
+  let revision = 7
+  const mutateCalls = []
+  return {
+    mutateCalls,
+    getSnapshot: () => ({ status: 'ready', value, revision, writable: true }),
+    subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener) },
+    mutate: async (ops, expectedRevision) => {
+      mutateCalls.push({ ops, expectedRevision })
+      if (expectedRevision !== revision) return false
+      revision += 1
+      for (const op of ops) {
+        if (op.op === 'unset') {
+          let node = value
+          for (let i = 0; i < op.path.length - 1; i += 1) node = node[op.path[i]]
+          delete node[op.path[op.path.length - 1]]
+        } else {
+          let node = value
+          for (let i = 0; i < op.path.length - 1; i += 1) node = node[op.path[i]]
+          node[op.path[op.path.length - 1]] = op.value
+        }
+      }
+      for (const listener of listeners) listener()
+      return true
+    },
+  }
+}
+
+function fakeCtx({ forms = {} } = {}) {
+  const registrations = []
+  const ctx = {
+    locale: { bind: () => (key) => key, register: () => {} },
+    configForms: { get: (ns) => forms[ns] ?? formFor(ns) },
+    slots: {
+      inject: (name, register) => register(),
+      register: (options, render) => { registrations.push({ options, render }) },
+    },
+    effect: (fn) => {
+      const dispose = fn()
+      return typeof dispose === 'function' ? dispose : () => {}
+    },
+  }
+  return { ctx, registrations }
+}
+
+test('factory: package-name id, apply/inject exports', async () => {
   const { registration, moduleExports } = await loadClient()
   assert.equal(registration.id, 'dsh-mm-resilience')
-  assert.equal(typeof registration.factory, 'function')
   assert.equal(typeof moduleExports.apply, 'function')
   assert.deepEqual(moduleExports.inject, ['slots', 'locale', 'configForms'])
 })
 
-test('apply: registers locale dict, injects page style, and binds the plugins.bundle.config card unconditionally', async () => {
+test('apply: unconditional plugins.bundle.config registration keyed by package name', async () => {
   const { moduleExports } = await loadClient()
-  const effectLabels = []
-  const slotInjections = []
-  let localeDict
-  let styleInjected = false
-  const ctx = {
-    locale: {
-      bind: () => (key) => key,
-      register: (ns, dict) => { localeDict = dict },
-    },
-    configForms: {
-      get: (ns) => formFor(ns),
-    },
-    slots: {
-      inject: (name, register, label) => {
-        slotInjections.push({ name, label })
-        return register()
-      },
-      register: (options, render) => ({ options, render }),
-    },
-    effect: (fn, label) => {
-      if (typeof label === 'string') effectLabels.push(label)
-      const dispose = fn()
-      if (label === undefined) styleInjected = true
-      return typeof dispose === 'function' ? dispose : () => {}
-    },
-  }
+  const { ctx, registrations } = fakeCtx()
   moduleExports.apply(ctx)
-
-  assert.deepEqual(Object.keys(localeDict).sort(), ['en', 'zh'])
-  assert.ok(styleInjected, 'page style effect ran')
-  assert.deepEqual(effectLabels, ['mm-resilience: plugins card form subscription'])
-  assert.equal(slotInjections.length, 1)
-  assert.equal(slotInjections[0].name, 'plugins.bundle.config')
-  assert.equal(slotInjections[0].label, 'mm-resilience: plugins page card')
+  assert.equal(registrations.length, 1)
+  assert.equal(registrations[0].options.name, 'plugins.bundle.config')
+  assert.equal(registrations[0].options.key, 'dsh-mm-resilience')
 })
 
-test('apply: slot registration options carry key = package name; summary view renders text', async () => {
-  const { moduleExports } = await loadClient()
-  let slotRegistration
-  const ctx = {
-    locale: { bind: () => (key) => key, register: () => {} },
-    configForms: { get: () => formFor('mm-resilience') },
-    slots: {
-      inject: (name, register) => register(),
-      register: (options, render) => { slotRegistration = { options, render } },
-    },
-    effect: (fn) => fn(),
-  }
+test('page view renders the official SettingsForm + SettingsValueField tree with Tooltip ⓘ', async () => {
+  const { moduleExports, primitives } = await loadClient()
+  const { ctx, registrations } = fakeCtx()
   moduleExports.apply(ctx)
-  assert.equal(slotRegistration.options.name, 'plugins.bundle.config')
-  assert.equal(slotRegistration.options.key, 'dsh-mm-resilience')
-  assert.equal(typeof slotRegistration.render, 'function')
-  const summary = slotRegistration.render({ view: 'summary' })
-  assert.equal(typeof summary.type, 'string')
+  // The fake createElement invokes Card eagerly (hooks are synchronous), so
+  // the page render returns the fully rendered div tree.
+  const tree = registrations[0].render({ view: 'page' })
+  assert.equal(tree.type, 'div')
+  const form = tree.children[0]
+  assert.equal(form.type, 'SettingsForm')
+  assert.equal(typeof form.props.onSave, 'function')
+  assert.equal(typeof form.props.onDiscard, 'function')
+  assert.deepEqual(Object.keys(form.props.labels).sort(), ['readOnly', 'save', 'saveFailed', 'saving', 'unavailable'])
+  // two sections × heading(row with Tooltip ⓘ) + 3 official fields
+  const sections = form.children
+  assert.equal(sections.length, 2)
+  assert.equal(primitives.calls.tooltips.length, 2, 'one hover ⓘ per section heading')
+  assert.equal(primitives.calls.fields.length, 3, 'pixels + count + concurrency official fields')
+  const ids = primitives.calls.fields.map((f) => f.id).sort()
+  assert.deepEqual(ids, ['mmrr-concurrency', 'mmrr-count', 'mmrr-pixels'])
+  for (const field of primitives.calls.fields) {
+    assert.equal(field.numeric, true)
+    assert.equal(typeof field.help?.label, 'string')
+    assert.equal(typeof field.onEdit, 'function')
+    assert.equal(typeof field.onReset, 'function')
+  }
+  // re-apply borderless control below the form, official note styling
+  assert.equal(tree.children[1].props.className, 'mmrr-reapply')
 })
 
-test('fanOutPixelBudget: providers-keys-only, revision-fenced atomic ops, single conflict retry', async () => {
+test('summary view renders a plain one-liner span', async () => {
+  const { moduleExports } = await loadClient()
+  const { ctx, registrations } = fakeCtx()
+  moduleExports.apply(ctx)
+  const summary = registrations[0].render({ view: 'summary' })
+  assert.equal(summary.type, 'span')
+})
+
+test('fan-out: set ops to every provider route, revision-fenced with one conflict retry', async () => {
   const { moduleExports } = await loadClient()
   const calls = []
   let revision = 3
   let failOnce = true
   const llmForm = {
-    getSnapshot: () => ({
-      status: 'ready',
-      revision,
-      value: { providers: { sz: {}, openai: {} } },
-    }),
+    getSnapshot: () => ({ status: 'ready', revision, value: { providers: { sz: {}, openai: {} } } }),
     subscribe: () => () => {},
     mutate: async (ops, expectedRevision) => {
       calls.push({ ops, expectedRevision })
       if (failOnce && expectedRevision === 3) {
         failOnce = false
-        revision = 4 // concurrent writer bumped it
+        revision = 4
         return false
       }
       if (expectedRevision !== revision) return false
@@ -134,73 +223,46 @@ test('fanOutPixelBudget: providers-keys-only, revision-fenced atomic ops, single
       return true
     },
   }
-  const ctx = { configForms: { get: (ns) => (ns === 'llm-pi-ai' ? llmForm : undefined) } }
-  const result = await moduleExports.fanOutPixelBudget(ctx, 262144)
+  const result = await moduleExports.fanOutPixelBudget({ configForms: { get: (ns) => (ns === 'llm-pi-ai' ? llmForm : undefined) } }, 262144)
   assert.equal(result.ok, true)
   assert.equal(result.count, 2)
-  assert.equal(calls.length, 2, 'one re-read retry after the first conflict')
+  assert.equal(calls.length, 2)
   assert.deepEqual(calls[1].ops, [
     { op: 'set', path: ['providers', 'sz', 'requestImagePixelBudget'], value: 262144 },
     { op: 'set', path: ['providers', 'openai', 'requestImagePixelBudget'], value: 262144 },
   ])
-  assert.equal(calls[1].expectedRevision, 4, 'retry re-read the bumped revision')
+  assert.equal(calls[1].expectedRevision, 4)
 })
 
-test('fanOutPixelBudget: no providers and unavailable namespace are honest skips', async () => {
+test('fan-out: budget === null emits UNSET ops (restore-official path)', async () => {
   const { moduleExports } = await loadClient()
-  const emptyForm = {
-    getSnapshot: () => ({ status: 'ready', revision: 1, value: { providers: {} } }),
-    subscribe: () => () => {},
-    mutate: async () => true,
-  }
-  assert.deepEqual(
-    await moduleExports.fanOutPixelBudget({ configForms: { get: () => emptyForm } }, 1),
-    { ok: false, reason: 'no-providers' },
-  )
-  assert.deepEqual(
-    await moduleExports.fanOutPixelBudget({ configForms: { get: () => undefined } }, 1),
-    { ok: false, reason: 'unavailable' },
-  )
+  const llmForm = formFor('llm-pi-ai')
+  const result = await moduleExports.fanOutPixelBudget({ configForms: { get: (ns) => (ns === 'llm-pi-ai' ? llmForm : undefined) } }, null)
+  assert.equal(result.ok, true)
+  assert.equal(result.count, 2)
+  assert.deepEqual(llmForm.mutateCalls[0].ops, [
+    { op: 'unset', path: ['providers', 'sz', 'requestImagePixelBudget'] },
+    { op: 'unset', path: ['providers', 'openai', 'requestImagePixelBudget'] },
+  ])
+  assert.equal(llmForm.getSnapshot().value.providers.sz.requestImagePixelBudget, undefined, 'override deleted → official default re-inherited')
 })
 
-test('fanOutPixelBudget: a second consecutive conflict is returned, not retried forever', async () => {
+test('fan-out: honest skips for missing namespace / no providers / repeated conflict', async () => {
   const { moduleExports } = await loadClient()
-  const calls = []
+  assert.deepEqual(await moduleExports.fanOutPixelBudget({ configForms: { get: () => undefined } }, 1), { ok: false, reason: 'unavailable' })
+  const empty = formFor('llm-pi-ai')
+  empty.getSnapshot = () => ({ status: 'ready', revision: 1, value: { providers: {} } })
+  assert.deepEqual(await moduleExports.fanOutPixelBudget({ configForms: { get: () => empty } }, 1), { ok: false, reason: 'no-providers' })
   const alwaysConflict = {
     getSnapshot: () => ({ status: 'ready', revision: 9, value: { providers: { a: {} } } }),
     subscribe: () => () => {},
-    mutate: async (ops, expectedRevision) => { calls.push(expectedRevision); return false },
+    mutate: async () => false,
   }
-  const result = await moduleExports.fanOutPixelBudget({ configForms: { get: () => alwaysConflict } }, 42)
-  assert.deepEqual(result, { ok: false, reason: 'conflict' })
-  assert.equal(calls.length, 2)
+  const calls2 = []
+  alwaysConflict.mutate = async (ops, rev) => { calls2.push(rev); return false }
+  assert.deepEqual(
+    await moduleExports.fanOutPixelBudget({ configForms: { get: () => alwaysConflict } }, 42),
+    { ok: false, reason: 'conflict' },
+  )
+  assert.equal(calls2.length, 2)
 })
-
-function formFor(ns) {
-  const listeners = new Set()
-  const value = {
-    enabled: true,
-    maxImagePixels: 1048576,
-    maxDescribedPerMessage: 8,
-    describeProvider: '',
-    describeModel: '',
-    describeConcurrency: 4,
-    describeTimeoutMs: 10000,
-    describeTotalBudgetMs: 15000,
-  }
-  let revision = 7
-  const mutateCalls = []
-  return {
-    mutateCalls,
-    getSnapshot: () => ({ status: 'ready', value, revision }),
-    subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener) },
-    mutate: async (ops, expectedRevision) => {
-      mutateCalls.push({ ops, expectedRevision })
-      if (expectedRevision !== revision) return false
-      revision += 1
-      for (const op of ops) value[op.path[0]] = op.value
-      for (const listener of listeners) listener()
-      return true
-    },
-  }
-}
