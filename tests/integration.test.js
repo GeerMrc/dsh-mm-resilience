@@ -14,7 +14,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { apply } from '../src/index.js'
-import { egressLiveToolImages } from '../src/egress.js'
+import { createEgressState, egressLiveToolImages } from '../src/egress.js'
 
 const ref = (attachmentId, extra = {}) => ({
   attachmentId, mediaType: 'image/png', width: 800, height: 600, bytes: 12345, ...extra,
@@ -206,24 +206,31 @@ test('D. mm_view_image result egress: next pre-step replaces, idempotent, reques
       ],
     },
   }, { surfaceOp: 'append' }).seq
-  assert.equal(session.liveImageBlocks().length, 1, 'pixels ride before egress')
+  assert.equal(session.liveImageBlocks().length, 1, 'pixels present before any pre-step')
 
   const listeners = makePlugin(fakeLlm())
-  const request = await runStep(session, listeners, {
+  // Step A: the pre-step FENCE keeps the result live — this request is the
+  // one that carries the re-view pixels (exactly once).
+  const requestA = await runStep(session, listeners, {
     messages: [{ id: 'm2', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '继续' }] }],
   })
+  assert.equal(session.liveImageBlocks().length, 1, 'request A rides the re-view pixels')
+  const requestATool = requestA.find((m) => m.role === 'tool')
+  assert.equal(requestATool.content.find((b) => b.type === 'image').offloaded, undefined)
+  assert.equal(session.log.filter((e) => e.surfaceOp?.op === 'replace').length, 0)
+
+  // Step B: the fence clears it — request B carries zero image bytes.
+  await runStep(session, listeners, { messages: [{ id: 'm3', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '再继续' }] }] })
   assert.equal(session.liveImageBlocks().length, 0, 'egress cleared the tool-result pixels')
   const replacement = session.log.find((e) => e.surfaceOp?.op === 'replace')
   assert.equal(replacement.surfaceOp.startSeq, toolResultSeq)
   assert.deepEqual(replacement.sourceEventSeqs, [toolResultSeq])
   assert.equal(replacement.data.message.content[1].offloaded, true)
   assert.equal(replacement.data.message.content[0].text.includes('归档描述'), true, 'text kept verbatim')
-  assert.match(request[2].content[0].text, /继续/)
-  // Idempotent: a further step appends nothing new.
-  const before = session.log.length
-  await runStep(session, listeners, { messages: [{ id: 'm3', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '再继续' }] }] })
-  assert.equal(session.log.filter((e) => e.surfaceOp?.op === 'replace').length, 1)
-  assert.ok(session.log.length > before)
+  // Step C: idempotent.
+  const replacesBefore = session.log.filter((e) => e.surfaceOp?.op === 'replace').length
+  await runStep(session, listeners, { messages: [{ id: 'm4', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '还继续' }] }] })
+  assert.equal(session.log.filter((e) => e.surfaceOp?.op === 'replace').length, replacesBefore)
 })
 
 test('E. error-turn survival: egress fires on the next press even without turn-stopping', async () => {
@@ -237,10 +244,15 @@ test('E. error-turn survival: egress fires on the next press even without turn-s
   }, { surfaceOp: 'append' })
   // Turn 1 ends in ERROR — agent/turn-stopping never fires (extracted fact).
   const listeners = makePlugin(fakeLlm())
+  // Press 1: rides once (fence), press 2: cleared — error turns stay covered.
   await runStep(session, listeners, {
     messages: [{ id: 'm2', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '报错中断了，请继续' }] }],
   })
-  assert.equal(session.liveImageBlocks().length, 0)
+  assert.equal(session.liveImageBlocks().length, 1, 'first press rides the pixels')
+  await runStep(session, listeners, {
+    messages: [{ id: 'm3', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '继续' }] }],
+  })
+  assert.equal(session.liveImageBlocks().length, 0, 'second press clears them')
 })
 
 test('F. plugin-disabled replay: the log derives without the plugin; no custom event types were emitted', async () => {
@@ -259,7 +271,10 @@ test('F. plugin-disabled replay: the log derives without the plugin; no custom e
       content: [{ type: 'image', attachment: ref('sha256:f1') }],
     },
   }, { surfaceOp: 'append' })
-  egressLiveToolImages(session)
+  const state = createEgressState()
+  egressLiveToolImages(session, state) // seen
+  state.requestedSinceSeen = true
+  egressLiveToolImages(session, state) // cleared
 
   // Every event the plugin produced is a standard vocabulary member.
   const emittedTypes = new Set(session.log.map((e) => e.type))

@@ -69,7 +69,7 @@ async function runPreStep(ctx, payloadOverrides = {}, decisionOverrides = {}) {
   return listener(payload, next)
 }
 
-test('apply registers the pre-step listener and the conditional tool only when enabled', () => {
+test('apply always registers the listener and tool; enabled gates per event', () => {
   const off = fakeContext()
   apply(off, { enabled: true })
   assert.ok(off.listeners.has('agent/pre-step'))
@@ -77,10 +77,33 @@ test('apply registers the pre-step listener and the conditional tool only when e
   assert.equal(off.registeredTools[0].definition.name, 'mm_view_image')
   assert.equal(typeof off.registeredTools[0].options.when, 'function')
 
+  // Registrations stay mounted when disabled (volatile commits in place
+  // without re-running apply); the per-event gate makes the plugin inert.
   const disabled = fakeContext()
   apply(disabled, { enabled: { get: () => false } })
-  assert.equal(disabled.listeners.has('agent/pre-step'), false)
-  assert.equal(disabled.registeredTools.length, 0)
+  assert.ok(disabled.listeners.has('agent/pre-step'))
+  assert.equal(disabled.registeredTools.length, 1)
+})
+
+test('liveness: toggling enabled on the live config object takes effect on the next event', async () => {
+  const config = { enabled: true }
+  const ctx = fakeContext()
+  apply(ctx, config)
+  const listener = ctx.listeners.get('agent/pre-step')
+  const payload = {
+    agent: null, messages: [], turn: 1, step: 1,
+    signal: new AbortController().signal,
+    modelSelection: { provider: 'sz', model: 'vl' },
+  }
+  const next = async () => ({ kind: 'enter', messages: [imageMessage] })
+
+  config.enabled = false
+  const inert = await listener(payload, next)
+  assert.equal(inert.messages[0], imageMessage, 'disabled: claimed batch untouched (same object)')
+
+  config.enabled = true
+  const active = await listener(payload, next)
+  assert.equal(active.messages[0].content[1].offloaded, true, 're-enabled: rewrite applies')
 })
 
 test('pre-step: claimed images archived with description tag; decision fields spread', async () => {

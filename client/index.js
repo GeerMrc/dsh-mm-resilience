@@ -191,6 +191,11 @@ window.__ModuleLoader__.load({
         this.#patch({ saved: false })
       }
 
+      /** Discard: re-copy the committed value over the draft. */
+      reset = () => {
+        this.#sync()
+      }
+
       save = async () => {
         const { value, draft } = this.#state
         if (value === undefined || draft === undefined) return 'unavailable'
@@ -277,15 +282,33 @@ window.__ModuleLoader__.load({
       { label: '2048×2048', value: 2048 * 2048 },
     ]
 
+    /**
+     * Numeric field with a local text override so intermediate input (an
+     * empty field, or the "2621" prefix of "262144") never snaps back to the
+     * last valid draft: the override lives until it parses back to the draft
+     * value or the field is remounted (resetToken key on discard).
+     */
     function NumberField(props) {
-      const { label, hint, text, invalid, invalidLabel, onEdit, t } = props
+      const { label, hint, value, min, max, invalid, invalidLabel, onValid, onInvalid, t } = props
+      const [edit, setEdit] = useState(null)
+      const shown = edit === null ? String(value ?? '') : edit
+      const onChange = (raw) => {
+        setEdit(raw)
+        const parsed = parseBoundedInt(raw, min, max)
+        if (parsed === undefined) onInvalid()
+        else onValid(parsed)
+      }
+      // The override is done once it equals the committed draft (or a fresh
+      // valid parse): follow the draft again so preset chips sync visibly.
+      const normalized = edit !== null && parseBoundedInt(edit, min, max) === value ? null : edit
       return createElement('div', null,
         createElement('label', { className: 'mmr-label' }, label),
         createElement('input', {
           className: invalid ? 'mmr-input mmr-invalid' : 'mmr-input',
-          type: 'text', inputMode: 'numeric', value: text,
+          type: 'text', inputMode: 'numeric',
+          value: normalized === null ? String(value ?? '') : shown,
           'aria-invalid': invalid ? 'true' : undefined,
-          onChange: (event) => onEdit(event.target.value),
+          onChange: (event) => onChange(event.target.value),
         }),
         invalid ? createElement('span', { className: 'mmr-invalidTag' }, ` ${invalidLabel}`) : null,
         hint ? createElement('p', { className: 'mmr-hint' }, hint) : null)
@@ -309,6 +332,7 @@ window.__ModuleLoader__.load({
       const [fanout, setFanout] = useState('')
       const [fieldInvalid, setFieldInvalid] = useState({})
       const [advancedOpen, setAdvancedOpen] = useState(false)
+      const [resetCount, setResetCount] = useState(0)
       const { value, draft, status: formStatus } = state
       if (formStatus !== 'ready' || draft === undefined) {
         return createElement('section', { className: 'mmr-section' },
@@ -316,13 +340,14 @@ window.__ModuleLoader__.load({
           createElement('p', { className: 'mmr-hint' }, t('unavailable')))
       }
 
-      const editNumber = (key, text, min, max) => {
-        const parsed = parseBoundedInt(text, min, max)
-        setFieldInvalid((prev) => ({ ...prev, [key]: parsed === undefined }))
-        if (parsed !== undefined) controller.edit((d) => { d[key] = parsed })
+      const onValid = (key) => (parsed) => {
+        setFieldInvalid((prev) => ({ ...prev, [key]: false }))
+        controller.edit((d) => { d[key] = parsed })
       }
+      const onInvalid = (key) => () => setFieldInvalid((prev) => ({ ...prev, [key]: true }))
       const editEnabled = () => controller.edit((d) => { d.enabled = !d.enabled })
       const editText = (key, text) => controller.edit((d) => { d[key] = text })
+      const fieldKey = (key) => `${key}:${resetCount}`
 
       const pixelsDirty = JSON.stringify(value.maxImagePixels) !== JSON.stringify(draft.maxImagePixels)
 
@@ -357,10 +382,11 @@ window.__ModuleLoader__.load({
       }
 
       const onDiscard = () => {
-        controller.init()
+        controller.reset()
         setStatus('')
         setFanout('')
         setFieldInvalid({})
+        setResetCount((count) => count + 1)
       }
 
       return createElement('div', { className: 'mmr-card' },
@@ -379,24 +405,24 @@ window.__ModuleLoader__.load({
 
         createElement('section', { className: 'mmr-section', key: 'limits' },
           createElement(NumberField, {
-            key: 'pixels', label: t('pixelsLabel'), hint: t('pixelsHint'),
-            text: String(draft.maxImagePixels ?? ''),
+            key: fieldKey('maxImagePixels'), label: t('pixelsLabel'), hint: t('pixelsHint'),
+            value: draft.maxImagePixels, min: PIXEL_MIN, max: PIXEL_MAX,
             invalid: fieldInvalid.maxImagePixels === true, invalidLabel: `${PIXEL_MIN}–${PIXEL_MAX}`,
-            onEdit: (text) => editNumber('maxImagePixels', text, PIXEL_MIN, PIXEL_MAX), t,
+            onValid: onValid('maxImagePixels'), onInvalid: onInvalid('maxImagePixels'), t,
           }),
           createElement('div', { className: 'mmr-row', key: 'presets' },
             createElement('span', { className: 'mmr-hint' }, t('preset')),
             PRESETS.map((preset) => createElement('button', {
               key: preset.label, type: 'button', className: 'mmr-chip',
               'aria-pressed': draft.maxImagePixels === preset.value ? 'true' : 'false',
-              onClick: () => editNumber('maxImagePixels', String(preset.value), PIXEL_MIN, PIXEL_MAX),
+              onClick: () => onValid('maxImagePixels')(preset.value),
             }, preset.label))),
           createElement('p', { className: 'mmr-help' }, t('pixelsHelp')),
           createElement(NumberField, {
-            key: 'count', label: t('countLabel'), hint: t('countHint'),
-            text: String(draft.maxDescribedPerMessage ?? ''),
+            key: fieldKey('maxDescribedPerMessage'), label: t('countLabel'), hint: t('countHint'),
+            value: draft.maxDescribedPerMessage, min: 1, max: 20,
             invalid: fieldInvalid.maxDescribedPerMessage === true, invalidLabel: '1–20',
-            onEdit: (text) => editNumber('maxDescribedPerMessage', text, 1, 20), t,
+            onValid: onValid('maxDescribedPerMessage'), onInvalid: onInvalid('maxDescribedPerMessage'), t,
           })),
 
         createElement('details', {
@@ -415,22 +441,22 @@ window.__ModuleLoader__.load({
               onEdit: (text) => editText('describeModel', text),
             }),
             createElement(NumberField, {
-              label: t('concurrencyLabel'),
-              text: String(draft.describeConcurrency ?? ''),
+              key: fieldKey('describeConcurrency'), label: t('concurrencyLabel'),
+              value: draft.describeConcurrency, min: 1, max: 8,
               invalid: fieldInvalid.describeConcurrency === true, invalidLabel: '1–8',
-              onEdit: (text) => editNumber('describeConcurrency', text, 1, 8), t,
+              onValid: onValid('describeConcurrency'), onInvalid: onInvalid('describeConcurrency'), t,
             }),
             createElement(NumberField, {
-              label: t('timeoutLabel'),
-              text: String(draft.describeTimeoutMs ?? ''),
+              key: fieldKey('describeTimeoutMs'), label: t('timeoutLabel'),
+              value: draft.describeTimeoutMs, min: 1000, max: 60000,
               invalid: fieldInvalid.describeTimeoutMs === true, invalidLabel: '1000–60000',
-              onEdit: (text) => editNumber('describeTimeoutMs', text, 1000, 60000), t,
+              onValid: onValid('describeTimeoutMs'), onInvalid: onInvalid('describeTimeoutMs'), t,
             }),
             createElement(NumberField, {
-              label: t('totalLabel'),
-              text: String(draft.describeTotalBudgetMs ?? ''),
+              key: fieldKey('describeTotalBudgetMs'), label: t('totalLabel'),
+              value: draft.describeTotalBudgetMs, min: 1000, max: 120000,
               invalid: fieldInvalid.describeTotalBudgetMs === true, invalidLabel: '1000–120000',
-              onEdit: (text) => editNumber('describeTotalBudgetMs', text, 1000, 120000), t,
+              onValid: onValid('describeTotalBudgetMs'), onInvalid: onInvalid('describeTotalBudgetMs'), t,
             }))),
 
         createElement('div', { className: 'mmr-actions', key: 'actions' },

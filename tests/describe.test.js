@@ -16,6 +16,8 @@ import assert from 'node:assert/strict'
 
 import { createDescriber } from '../src/describe.js'
 
+const refFor = (attachmentId) => ({ attachmentId, mediaType: 'image/png', width: 10, height: 10, bytes: 5 })
+
 const ref = (attachmentId) => ({ attachmentId, mediaType: 'image/png', width: 10, height: 10, bytes: 5 })
 const baseConfig = {
   maxDescribedPerMessage: 8,
@@ -57,7 +59,7 @@ const route = { provider: 'sz', model: 'vl' }
 
 test('describes images and returns provider/model provenance', async () => {
   const llm = fakeLlm({ textFor: () => '图里有按钮' })
-  const describer = createDescriber({ llm, config: baseConfig })
+  const describer = createDescriber({ llm, configRef: () => baseConfig })
   const map = await describer.describeImages([ref('a'), ref('b')], route)
   assert.equal(map.get('a').text, '图里有按钮')
   assert.equal(map.get('a').provider, 'sz')
@@ -75,7 +77,7 @@ test('describes images and returns provider/model provenance', async () => {
 
 test('capability gate: text-only route yields no entries and no stream calls', async () => {
   const llm = fakeLlm({ capable: false })
-  const describer = createDescriber({ llm, config: baseConfig })
+  const describer = createDescriber({ llm, configRef: () => baseConfig })
   const map = await describer.describeImages([ref('a')], route)
   assert.equal(map.size, 0)
   assert.equal(llm.calls.length, 0)
@@ -83,14 +85,14 @@ test('capability gate: text-only route yields no entries and no stream calls', a
 
 test('missing route yields no entries without touching the llm', async () => {
   const llm = fakeLlm()
-  const describer = createDescriber({ llm, config: baseConfig })
+  const describer = createDescriber({ llm, configRef: () => baseConfig })
   assert.equal((await describer.describeImages([ref('a')], null)).size, 0)
   assert.equal(llm.calls.length, 0)
 })
 
 test('LRU cache: same attachmentId described once across batches', async () => {
   const llm = fakeLlm()
-  const describer = createDescriber({ llm, config: baseConfig })
+  const describer = createDescriber({ llm, configRef: () => baseConfig })
   await describer.describeImages([ref('a')], route)
   const second = await describer.describeImages([ref('a')], route)
   assert.equal(second.get('a').text, 'ok')
@@ -99,7 +101,7 @@ test('LRU cache: same attachmentId described once across batches', async () => {
 
 test('per-message cap: only the first N images get described', async () => {
   const llm = fakeLlm()
-  const describer = createDescriber({ llm, config: { ...baseConfig, maxDescribedPerMessage: 2 } })
+  const describer = createDescriber({ llm, configRef: () => ({ ...baseConfig, maxDescribedPerMessage: 2 }) })
   const map = await describer.describeImages([ref('a'), ref('b'), ref('c')], route)
   assert.deepEqual([...map.keys()].sort(), ['a', 'b'])
   assert.equal(llm.calls.length, 2)
@@ -116,36 +118,35 @@ test('worker pool never exceeds describeConcurrency', async () => {
     live -= 1
     yield { type: 'text-delta', index: 0, text: 'x' }
   }
-  const describer = createDescriber({ llm, config: { ...baseConfig, describeConcurrency: 2 } })
+  const describer = createDescriber({ llm, configRef: () => ({ ...baseConfig, describeConcurrency: 2 }) })
   await describer.describeImages([ref('a'), ref('b'), ref('c'), ref('d')], route)
   assert.ok(peak <= 2, `peak concurrency ${peak} > 2`)
 })
 
-test('total budget: tail images are skipped after the budget expires', async () => {
-  const llm = fakeLlm()
-  llm.stream = async function* () {
-    await new Promise((resolve) => setTimeout(resolve, 30))
-    yield { type: 'text-delta', index: 0, text: 'x' }
-  }
+test('total budget is a HARD bound: in-flight calls abort at the deadline, tail is skipped', async () => {
+  const llm = fakeLlm({ streams: [{ kind: 'hang' }, { kind: 'hang' }, { kind: 'hang' }] })
   const describer = createDescriber({
     llm,
-    config: { ...baseConfig, describeConcurrency: 1, describeTotalBudgetMs: 40 },
+    configRef: () => ({ ...baseConfig, describeConcurrency: 1, describeTotalBudgetMs: 40, describeTimeoutMs: 10_000 }),
   })
+  const started = Date.now()
   const map = await describer.describeImages([ref('a'), ref('b'), ref('c')], route)
-  // first call consumes ~30ms of a 40ms budget; at most one more starts before expiry
-  assert.ok(map.size >= 1 && map.size <= 2, `expected 1..2 described, got ${map.size}`)
+  const elapsed = Date.now() - started
+  assert.equal(map.size, 0, 'the hanging call was aborted BY the deadline, not by its 10s timeout')
+  assert.equal(llm.calls.length, 1, 'tail images are skipped after the deadline')
+  assert.ok(elapsed < 500, `hard bound honored (${elapsed}ms, budget 40ms)`)
 })
 
 test('stream error yields no entry and never throws', async () => {
   const llm = fakeLlm({ streams: [{ kind: 'throw', error: 'gateway down' }] })
-  const describer = createDescriber({ llm, config: baseConfig })
+  const describer = createDescriber({ llm, configRef: () => baseConfig })
   const map = await describer.describeImages([ref('a')], route)
   assert.equal(map.size, 0)
 })
 
 test('per-call timeout aborts a hanging stream into a skipped entry', async () => {
   const llm = fakeLlm({ streams: [{ kind: 'hang' }, { kind: 'hang' }] })
-  const describer = createDescriber({ llm, config: { ...baseConfig, describeTimeoutMs: 30 } })
+  const describer = createDescriber({ llm, configRef: () => ({ ...baseConfig, describeTimeoutMs: 30 }) })
   const map = await describer.describeImages([ref('a'), ref('b')], route)
   assert.equal(map.size, 0) // both hanging streams aborted at the per-call timeout
   assert.equal(llm.calls.length, 2)
@@ -153,7 +154,7 @@ test('per-call timeout aborts a hanging stream into a skipped entry', async () =
 
 test('abort signal cancels pending describes without throwing', async () => {
   const llm = fakeLlm({ streams: [{ kind: 'hang' }] })
-  const describer = createDescriber({ llm, config: baseConfig })
+  const describer = createDescriber({ llm, configRef: () => baseConfig })
   const controller = new AbortController()
   const pending = describer.describeImages([ref('a')], route, controller.signal)
   controller.abort()

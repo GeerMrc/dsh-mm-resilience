@@ -60,3 +60,15 @@
 - `AbortSignal.timeout` 定时器 unref——空事件循环永不触发 → describe 改显式 ref'd 定时器
 - `user/message` 事件 data 即消息本体；`tool/result` 为 `{turn,step,message}` 包装
 - 同步历史读取（snapshotEvents/eventAt/ownEvents）已弃用；官方 pruner 以 waiver 使用 surface.nodes+eventAt——本插件镜像该对（跟随官方迁移）
+
+## 独立对抗复审（4c，实现完成后）——NEEDS FIXES → 全部闭环
+
+| # | 级别 | 发现 | 修复 |
+|---|---|---|---|
+| 1 | 🔴 | 出清在 pre-step N+1 开头执行，而像素本应搭乘的恰是 N+1 的请求（preStep→append→buildRequest 顺序）——回看像素从未到达任何模型请求 | **rode-once 围栏**：per-session EgressState（seen + requestedSinceSeen，调用方在决策后写入 enter）；仅"上一轮已见且其后有请求派生"的结果被出清——搭乘恰一次；重启后至多多搭一轮（留痕） |
+| 2 | 🟠 | volatile 原位提交不重跑 apply——配置快照冻结，设置卡开关/路由/上限重启前全部失效 | **live config**：rawConfig 保留，每事件 materializeConfig（纯函数）；enabled 按事件门控；工具 execute 时检查 enabled |
+| 3 | 🟡 | 总预算只挡"新开调用"——在途调用可超时至 budget+timeout（默认 25s，极限 180s） | **批级硬期限**：deadline AbortController（ref'd 定时器）经 AbortSignal.any 注入每个在途调用——最坏上界=预算本身 |
+| 4 | 🟡 | surface.nodes/eventAt 缺失时静默降级——安全网死掉零诊断 | 一次性 warn（模块级去重） |
+| 5 | 🟡 | NumberField 受控于最后一个有效值——清空/输入前缀时显示回弹 | 本地文本 override（parse 回到 draft 值即跟随）+ 丢弃时 resetToken 重挂载；FormController 增 reset() |
+
+复审确认的正面结论：6 条修正全部按代码落地（file:line 勾稽）；契约与 subagent-plus 0.0.4 零漂移；66 项测试无空洞断言；**核心预防目标（贴图零字节搭乘任何请求）完整正确**。修复后 68/68。
