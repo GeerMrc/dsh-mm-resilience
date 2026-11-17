@@ -47,7 +47,6 @@ function fakeExec({ messages = [], header, options } = {}) {
 const tool = (overrides = {}) => createViewImageTool({
   llm: fakeLlm(),
   describer: fakeDescriber(new Map([['a', { text: '红色按钮', provider: 'sz', model: 'vl' }]])),
-  configRef: () => ({ enabled: true }),
   ...overrides,
 })
 
@@ -141,15 +140,4 @@ test('render: empty description renders the honest unavailable line', () => {
   const definition = tool()
   const blocks = definition.output.render({ attachmentId: 'a' }, { attachmentId: 'a', description: '', provider: '', model: '', mediaType: 'image/png', width: 1, height: 1, bytes: 1 })
   assert.match(blocks[0].text, /描述不可用/)
-})
-
-test('execute: refuses when the plugin is disabled via live settings', async () => {
-  const definition = tool({ configRef: () => ({ enabled: false }) })
-  const exec = fakeExec({ header: { config: { provider: 'sz', model: 'vl' } }, messages: [
-    { id: 'm1', role: 'user', source: { kind: 'user' }, content: [{ type: 'image', attachment: ref('a') }] },
-  ] })
-  await assert.rejects(
-    () => definition.execute({ attachmentId: 'a' }, exec),
-    /plugin is disabled/,
-  )
 })

@@ -24,13 +24,19 @@ const DESCRIBE_PROMPT =
 
 const DESCRIBE_MAX_TOKENS = 400
 
+/** Per-call timeout and hard batch budget — fixed guardrails (not user-facing). */
+export const DESCRIBE_TIMEOUT_MS = 10_000
+export const DESCRIBE_TOTAL_BUDGET_MS = 15_000
+
 /**
  * @param {object} deps
  * @param {{ resolveModelInfo?: Function, stream?: Function }} deps.llm - the host llm service.
- * @param {() => { describeConcurrency: number, describeTimeoutMs: number, describeTotalBudgetMs: number, [key: string]: unknown }} deps.configRef
+ * @param {() => { describeConcurrency: number, maxDescribedPerMessage: number, [key: string]: unknown }} deps.configRef
+ * @param {number} [deps.timeoutMs] - per-call timeout override (test seam; default {@link DESCRIBE_TIMEOUT_MS}).
+ * @param {number} [deps.totalBudgetMs] - batch budget override (test seam; default {@link DESCRIBE_TOTAL_BUDGET_MS}).
  * @returns {{ describeImages(refs: object[], route: {provider: string, model: string} | null, signal?: AbortSignal): Promise<Map<string, {text: string, provider: string, model: string}>> }}
  */
-export function createDescriber({ llm, configRef }) {
+export function createDescriber({ llm, configRef, timeoutMs = DESCRIBE_TIMEOUT_MS, totalBudgetMs = DESCRIBE_TOTAL_BUDGET_MS }) {
   const cache = new Map()
   const inflight = new Map()
 
@@ -50,7 +56,7 @@ export function createDescriber({ llm, configRef }) {
    * e.g. tests or sparse headless runs). The timer is always cleared and the
    * turn-signal relay always removed in `finally`.
    */
-  async function describeOne(ref, route, signal, timeoutMs) {
+  async function describeOne(ref, route, signal) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     const relay = () => controller.abort()
@@ -99,11 +105,11 @@ export function createDescriber({ llm, configRef }) {
     }
     if (!(await routeImageCapable(route.provider, route.model, signal))) return results
 
-    const queue = refs.slice(0, config.maxDescribedPerMessage)
+    const queue = refs.slice(0, configRef().maxDescribedPerMessage)
     // Batch deadline: ref'd timer (unref'd AbortSignal.timeout never fires on
     // an empty loop); fires into every in-flight call via signal composition.
     const deadlineController = new AbortController()
-    const deadlineTimer = setTimeout(() => deadlineController.abort(), config.describeTotalBudgetMs)
+    const deadlineTimer = setTimeout(() => deadlineController.abort(), totalBudgetMs)
     const composeSignal = () => {
       if (signal === undefined) return deadlineController.signal
       return AbortSignal.any([signal, deadlineController.signal])
@@ -127,7 +133,7 @@ export function createDescriber({ llm, configRef }) {
           if (joined !== null) results.set(index.attachmentId, joined)
           continue
         }
-        const task = describeOne(index, route, composeSignal(), config.describeTimeoutMs)
+        const task = describeOne(index, route, composeSignal())
           .then((entry) => {
             if (entry !== null) {
               cache.set(index.attachmentId, entry)
@@ -143,7 +149,7 @@ export function createDescriber({ llm, configRef }) {
     }
 
     try {
-      await Promise.all(Array.from({ length: Math.min(config.describeConcurrency, queue.length + 1) }, worker))
+      await Promise.all(Array.from({ length: Math.min(configRef().describeConcurrency, queue.length + 1) }, worker))
     } finally {
       clearTimeout(deadlineTimer)
     }

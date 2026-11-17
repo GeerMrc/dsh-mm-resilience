@@ -49,10 +49,9 @@ const OUTPUT_SCHEMA = {
  * @param {object} deps
  * @param {{ resolveModelInfo: Function }} deps.llm
  * @param {{ describeImages(refs: object[], route: {provider: string, model: string} | null, signal?: AbortSignal): Promise<Map> }} deps.describer
- * @param {() => { enabled: boolean, [key: string]: unknown }} deps.configRef - live config (volatile commits in place).
  * @returns {object} ToolDefinition plus a `whenHandler` used as the register `when` condition.
  */
-export function createViewImageTool({ llm, describer, configRef }) {
+export function createViewImageTool({ llm, describer }) {
   async function imageCapable(provider, model, signal) {
     try {
       const info = await llm.resolveModelInfo(provider, model, signal)
@@ -74,9 +73,6 @@ export function createViewImageTool({ llm, describer, configRef }) {
   }
 
   async function execute(args, exec) {
-    if (configRef().enabled !== true) {
-      throw new Error('mm_view_image: the plugin is disabled in its settings; image re-view is unavailable')
-    }
     const attachmentId = args?.attachmentId
     if (typeof attachmentId !== 'string' || attachmentId === '') {
       throw new Error('mm_view_image: attachmentId is required')

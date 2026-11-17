@@ -22,8 +22,6 @@ const ref = (attachmentId) => ({ attachmentId, mediaType: 'image/png', width: 10
 const baseConfig = {
   maxDescribedPerMessage: 8,
   describeConcurrency: 2,
-  describeTimeoutMs: 10_000,
-  describeTotalBudgetMs: 15_000,
 }
 
 function fakeLlm({ capable = true, textFor = () => 'ok', streams = undefined, onStream } = {}) {
@@ -127,7 +125,9 @@ test('total budget is a HARD bound: in-flight calls abort at the deadline, tail 
   const llm = fakeLlm({ streams: [{ kind: 'hang' }, { kind: 'hang' }, { kind: 'hang' }] })
   const describer = createDescriber({
     llm,
-    configRef: () => ({ ...baseConfig, describeConcurrency: 1, describeTotalBudgetMs: 40, describeTimeoutMs: 10_000 }),
+    configRef: () => ({ ...baseConfig, describeConcurrency: 1 }),
+    totalBudgetMs: 40,
+    timeoutMs: 10_000,
   })
   const started = Date.now()
   const map = await describer.describeImages([ref('a'), ref('b'), ref('c')], route)
@@ -146,7 +146,7 @@ test('stream error yields no entry and never throws', async () => {
 
 test('per-call timeout aborts a hanging stream into a skipped entry', async () => {
   const llm = fakeLlm({ streams: [{ kind: 'hang' }, { kind: 'hang' }] })
-  const describer = createDescriber({ llm, configRef: () => ({ ...baseConfig, describeTimeoutMs: 30 }) })
+  const describer = createDescriber({ llm, configRef: () => baseConfig, timeoutMs: 30 })
   const map = await describer.describeImages([ref('a'), ref('b')], route)
   assert.equal(map.size, 0) // both hanging streams aborted at the per-call timeout
   assert.equal(llm.calls.length, 2)

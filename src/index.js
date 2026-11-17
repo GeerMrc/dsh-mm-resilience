@@ -6,10 +6,11 @@
  * adjacent description tag), and never re-serialized as image bytes by any
  * later request; re-view happens on explicit demand through the
  * `mm_view_image` tool, whose pixels ride exactly the one request derived
- * next and are egressed by the following pre-step. `enabled: false` makes
- * both the archive rewrite and the tool inert while the fiber stays mounted
- * (volatile settings commit in place without re-running `apply`, so config is
- * re-materialized on every event, not snapshotted once).
+ * next and are egressed by the following pre-step. The describe route is
+ * ALWAYS the session's current model selection (a non-multimodal model means
+ * parsing is unavailable — the honest behavior); the bundle's Plugins-page
+ * enable switch is the plugin's only on/off (off unmounts everything and
+ * official behavior resumes).
  *
  * @module dsh-mm-resilience
  */
@@ -44,32 +45,34 @@ export function apply(ctx, rawConfig) {
     return state
   }
 
-  const { whenHandler, ...toolDefinition } = createViewImageTool({ llm: ctx.llm, describer, configRef: liveConfig })
+  const { whenHandler, ...toolDefinition } = createViewImageTool({ llm: ctx.llm, describer })
   ctx.tools.register(toolDefinition, { when: whenHandler })
 
   ctx.on('agent/pre-step', async (payload, next) => {
-    const config = liveConfig()
     // Egress first, fenced on rode-once (see egress.js); warn-only.
-    if (config.enabled) {
-      try {
-        egressLiveToolImages(payload?.agent?.session, egressStateOf(payload?.agent?.session))
-      } catch (error) {
-        console.warn(`[mm-resilience] egress pass skipped: ${error?.message ?? error}`)
-      }
+    try {
+      egressLiveToolImages(payload?.agent?.session, egressStateOf(payload?.agent?.session))
+    } catch (error) {
+      console.warn(`[mm-resilience] egress pass skipped: ${error?.message ?? error}`)
     }
 
     const decision = await next()
     // A request will be derived from the post-pass surface only on `enter`.
-    if (config.enabled && payload?.agent?.session !== undefined) {
+    if (payload?.agent?.session !== undefined) {
       egressStateOf(payload.agent.session).requestedSinceSeen = decision?.kind === 'enter'
     }
-    if (!config.enabled) return decision
     if (decision?.kind !== 'enter' || !Array.isArray(decision.messages)) return decision
 
     const refs = collectLiveImageRefs(decision.messages)
     if (refs.length === 0) return decision
 
-    const route = resolveDescribeRoute(config, payload?.modelSelection)
+    // The describe route is the claiming step's model selection, period.
+    const modelSelection = payload?.modelSelection
+    let route = null
+    if (typeof modelSelection?.provider === 'string' && typeof modelSelection?.model === 'string'
+      && modelSelection.provider !== '' && modelSelection.model !== '') {
+      route = { provider: modelSelection.provider, model: modelSelection.model }
+    }
     let descriptions = new Map()
     if (route !== null) {
       try {
@@ -94,23 +97,4 @@ export function apply(ctx, rawConfig) {
     }
     return changed ? { ...decision, messages } : decision
   })
-}
-
-/**
- * Describe route precedence: explicit configured pair, else the claiming
- * step's model selection. `null` archives without descriptions.
- *
- * @param {{ describeProvider: string, describeModel: string }} config
- * @param {{ provider?: string, model?: string } | undefined} modelSelection
- * @returns {{ provider: string, model: string } | null}
- */
-function resolveDescribeRoute(config, modelSelection) {
-  if (config.describeProvider !== '' && config.describeModel !== '') {
-    return { provider: config.describeProvider, model: config.describeModel }
-  }
-  if (typeof modelSelection?.provider === 'string' && typeof modelSelection?.model === 'string'
-    && modelSelection.provider !== '' && modelSelection.model !== '') {
-    return { provider: modelSelection.provider, model: modelSelection.model }
-  }
-  return null
 }
