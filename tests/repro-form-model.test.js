@@ -280,3 +280,52 @@ test('V1.E revision conflict keeps drafts (failed state) — official resilience
   assert.equal(form.props.state.failed, true, 'conflict surfaces the official saveFailed state')
   assert.equal(form.props.state.dirty, true, 'drafts retained for correction')
 })
+
+test('V1.F StrictMode/remount safety: hoisted controller survives remount; edits still notify; save lands', async () => {
+  const { moduleExports, miniReact } = await loadFactory()
+  miniReact.reset()
+  const scope = createFakeScope({ maxImagePixels: 4_194_304, maxDescribedPerMessage: 20, describeConcurrency: 4 })
+  const registrations = []
+  const ctx = {
+    locale: { bind: () => (key) => key, register: () => {} },
+    configForms: { get: (ns) => (ns === 'mm-resilience' ? scope : undefined) },
+    slots: {
+      inject: (name, register) => register(),
+      register: (options, render) => registrations.push({ options, render }),
+    },
+    effect: (fn) => {
+      const dispose = fn()
+      return typeof dispose === 'function' ? dispose : () => {}
+    },
+  }
+  moduleExports.apply(ctx)
+  // First mount.
+  miniReact.mount(registrations[0].render({ view: 'page' }))
+  // Simulated unmount + remount (React StrictMode replay / page navigation):
+  // the controller is a prop — plugin lifetime, never disposed by the card.
+  miniReact.reset()
+  miniReact.mount(registrations[0].render({ view: 'page' }))
+
+  const fieldsOf = () => {
+    const fields = []
+    walk(miniReact.mounted(), (node) => {
+      if (typeof node.type === 'function' && String(node.props.id ?? '').startsWith('mmrr-') && typeof node.props.onEdit === 'function') fields.push(node)
+    })
+    return fields
+  }
+  const formOf = () => {
+    let form
+    walk(miniReact.mounted(), (node) => {
+      if (typeof node.type === 'function' && node.props.state !== undefined && node.props.labels !== undefined) form = node
+    })
+    return form
+  }
+
+  fieldsOf().find((f) => f.props.id === 'mmrr-pixels').props.onEdit('262144')
+  miniReact.rerender()
+  assert.equal(formOf().props.state.dirty, true, 'edits still re-render after remount')
+  await formOf().props.onSave()
+  miniReact.rerender()
+  assert.equal(scope.mutateCalls.length, 1, 'save lands through the surviving controller')
+  assert.equal(formOf().props.state.dirty, false)
+})

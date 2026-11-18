@@ -8,10 +8,10 @@
 
 **修复 1：保存按钮无效 / 「重新应用」被当作保存（四要素）**
 
-- 现象：桌面实测点「保存」无效果；底部「重新应用到全部路由」成为事实上的可用操作；「恢复默认」从未出现
-- 根因排查（V1 复现台，c2cfd6b）：真实官方 SettingsFormModel（发布源码本地编译）+ 迷你有状态 hooks 驱动卡片真实接线——edit→dirty→save→mutate 落库→覆盖标记→reset→unset→冲突保草稿 **全链路正确**（5/5）；发布版与 alpha.2 的 form-model/SettingsForm/fields 逐文件一致；cosmokit volatile=Symbol.for（跨实例安全）；settings isVolatilePath=平凡 meta 判定 → 离线可证层全部清白，生产故障位于宿主 wire/entry 层（离线不可复现）
-- 修复：保存失败时输出**产品级遥测**（保存未落库提示行含 ns 快照 status/writable/revision + console.warn），挂载时 console.info ns 快照——一次桌面往返即可定位故障跳点
-- 预防：关键链路禁止仅用假件测试（真模型复现台入常驻套件）；诊断能力作为产品功能保留
+- 现象：桌面实测点「保存」无效果（按钮永久置灰）；底部「重新应用到全部路由」成为事实上的可用操作；「恢复默认」从未出现
+- 根因（两轮定位）：第一轮复现台（c2cfd6b）证明官方 SettingsFormModel+我方接线全链路正确，故障在组件生命周期层；第二轮对照官方「网页搜索与获取」卡（web-search/src/client/index.ts:51-56，控制器在 apply() 创建、随插件销毁）定谳——我方 `useState` 内建模型 + `useEffect` 卸载时 `model.dispose()`：React StrictMode 挂载→模拟卸载→重挂载回放中模型被 dispose 后不再重建（useState 初始化器不重跑）→ store 监听清空 → 编辑仍暂存但永不重渲染 → 保存按钮永久 dirty=false 置灰；DSH 客户端组件明确按 StrictMode 重挂载语义设计（resources.ts:8、ui-chat 组件测试均包 StrictMode）。自绘「重新应用」独立 onClick 不依赖 store，故仍可点——症状完全吻合
+- 修复：控制器提升至 apply()（官方 web-search 同构）：SettingsFormModel 创建一次、bind 一次、`ctx.effect` 随插件生命周期销毁；组件仅消费（useSyncExternalStore），无组件级 dispose；V1.F 重挂载回归测试锁定（72/72）
+- 预防：组件不得持有跨渲染可销毁资源的生命周期处置权——凡"创建一次、页面反复挂载"的状态一律提升到 apply 作用域（对齐官方 companion-card 模式）；真模型+重挂载仿真入常驻套件
 
 **修复 2：「恢复默认」缺失（四要素）**
 

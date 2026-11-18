@@ -8,7 +8,8 @@
  * (SubagentCard.tsx pattern): flat sections with h3 headings, the official
  * SettingsForm save bar, SettingsValueField fields (已覆盖 badge, 恢复默认),
  * a Tooltip ⓘ beside each section heading, and a
- * SettingsFormModel over ctx.configForms.get('mm-resilience'). No hand-drawn
+ * SettingsFormModel over ctx.configForms.get('mm-resilience'), hoisted to
+ * apply() with plugin-lifetime disposal (StrictMode-safe). No hand-drawn
  * control chrome remains. Schema defaults ARE the official takeover values,
  * so each field's official 恢复默认 restores the DSH default; resetting the
  * pixel budget also unsets the fanned-out provider overrides.
@@ -169,23 +170,18 @@ window.__ModuleLoader__.load({
     }
 
     function Card(props) {
-      const { ctx, t, form } = props
-      const [model] = useState(() => new SettingsFormModel(form, [
-        boundedField('maxImagePixels', PIXEL_MIN, PIXEL_MAX),
-        boundedField('maxDescribedPerMessage', 1, 20),
-        boundedField('describeConcurrency', 1, 8),
-      ]))
-      const [store] = useState(() => model.bind(() => ({
-        shell: model.shell(),
-        pixels: model.field('maxImagePixels'),
-        count: model.field('maxDescribedPerMessage'),
-        concurrency: model.field('describeConcurrency'),
-      })))
+      // The controller is created ONCE in apply() and lives with the plugin
+      // (official web-search/subagent card pattern). A component-lifecycle
+      // dispose broke under React StrictMode's mount→unmount→remount replay:
+      // the model was disposed and never recreated (useState does not
+      // re-run), so edits never re-rendered and the official save stayed
+      // disabled forever.
+      const { ctx, t, controller } = props
+      const { model, store, scope } = controller
       useEffect(() => {
-        const snapshot = form.getSnapshot()
+        const snapshot = scope.getSnapshot()
         console.info('[mm-resilience] settings ns snapshot:', JSON.stringify({ status: snapshot.status, writable: snapshot.writable, revision: snapshot.revision }))
-        return () => { model.dispose() }
-      }, [model, form])
+      }, [scope])
       const state = useSyncExternalStore(store.subscribe, store.getSnapshot)
       const [note, setNote] = useState('')
       // Pixel staging drives the save-time fan-out: 'set' writes the value to
@@ -217,7 +213,7 @@ window.__ModuleLoader__.load({
           // Honest production telemetry: the save refused to land — surface
           // the namespace snapshot essentials so one desktop round-trip pins
           // the failing hop (all offline layers are proven correct).
-          const snapshot = form.getSnapshot()
+          const snapshot = scope.getSnapshot()
           console.warn('[mm-resilience] save did not land:', JSON.stringify({ failed: after.failed, dirty: after.dirty, ns: { status: snapshot.status, writable: snapshot.writable, revision: snapshot.revision } }))
           setNote(`${t('saveDiag')}: status=${snapshot.status} writable=${snapshot.writable} revision=${snapshot.revision}`)
           return
@@ -231,7 +227,7 @@ window.__ModuleLoader__.load({
       const onReapply = async () => {
         // The COMMITTED value, never the staged draft (an unsaved or invalid
         // draft must not be fanned out to every route).
-        const committed = ctx.configForms.get(NS).getSnapshot().value?.maxImagePixels
+        const committed = scope.getSnapshot().value?.maxImagePixels
         if (typeof committed !== 'number' || !Number.isFinite(committed)) return
         const applied = await fanOutPixelBudget(ctx, committed)
         setNote(fanoutNote(t, applied))
@@ -281,6 +277,24 @@ window.__ModuleLoader__.load({
 
     const inject = ['slots', 'locale', 'configForms']
 
+    /** One card controller per plugin lifetime (official web-search pattern):
+     * the SettingsFormModel is created once, bound once, and disposed only
+     * when the plugin fiber goes away — never on component unmount. */
+    function createCardController(form) {
+      const model = new SettingsFormModel(form, [
+        boundedField('maxImagePixels', PIXEL_MIN, PIXEL_MAX),
+        boundedField('maxDescribedPerMessage', 1, 20),
+        boundedField('describeConcurrency', 1, 8),
+      ])
+      const store = model.bind(() => ({
+        shell: model.shell(),
+        pixels: model.field('maxImagePixels'),
+        count: model.field('maxDescribedPerMessage'),
+        concurrency: model.field('describeConcurrency'),
+      }))
+      return { model, store, scope: form, dispose: () => { model.dispose() } }
+    }
+
     function apply(ctx) {
       const t = ctx.locale.bind(NS)
       ctx.effect(() => ctx.locale.register(NS, { zh, en }))
@@ -291,6 +305,8 @@ window.__ModuleLoader__.load({
         document.head.append(style)
         return () => { style.remove() }
       })
+      const controller = createCardController(ctx.configForms.get(NS))
+      ctx.effect(() => () => { controller.dispose() }, 'mm-resilience: form subscription')
       // Unconditional: the configured-ledger gate needs this live registration,
       // and the card renders the official unavailable state when unserved.
       ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
@@ -300,7 +316,7 @@ window.__ModuleLoader__.load({
       }, (slotProps) => {
         const view = slotProps?.view ?? 'page'
         if (view === 'summary') return createElement('span', null, t('summary'))
-        return createElement(Card, { ctx, t, form: ctx.configForms.get(NS) })
+        return createElement(Card, { ctx, t, controller })
       }))
     }
 
