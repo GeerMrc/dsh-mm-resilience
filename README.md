@@ -68,6 +68,10 @@ pnpm test        # node --test，73 项（契约门/单测/契约保真集成/�
 - `client/index.js` 预构建工厂文件（经典 script；卡片全部复用官方 ui-primitives 组件）
 - `docs/design-decisions.md` 全部设计裁定与证据
 
+## 阶段归档
+
+- 当前阶段（设置卡官方对齐与 UI/UX 打磨，2026-11-18）：[docs/phase-2026-11-18-ui-archive.md](docs/phase-2026-11-18-ui-archive.md)（含实测验证清单 A/B 与待讨论疑问 Q1–Q5）
+
 ## 版本纪律
 
 v0.0.1，全本地，零远端；升版与发布须经人工定夺。变更见 [CHANGELOG](CHANGELOG.md)。
