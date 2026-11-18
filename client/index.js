@@ -43,7 +43,6 @@ window.__ModuleLoader__.load({
       pixelsLabel: '图片像素上限（宽×高总像素）',
       pixelsTip: '值为宽×高总像素面积；超限自动等比压缩（宽高同比例，如 2560×1440→约1365×768）；上限 2048×2048（入会归一化封顶，更大无效）。',
       pixelsHint: '常用：512×512=262144｜1024×1024=1048576｜2048×2048=4194304（默认）',
-      saveTip: '保存时像素上限应用到全部 pi-ai 模型路由；「恢复默认」同时清除各路由覆盖；模型页改过路由后改值→保存即可重新统一；DeepSeek 原生路由不受影响。',
       countLabel: '每条消息解析上限（张）',
       countTip: '下调可降低多图贴入的解析耗时与成本；归档图可随时用 mm_view_image 回看原图。',
       countHint: '前 N 张生成描述，其余仅归档；默认 20=官方上限',
@@ -66,7 +65,6 @@ window.__ModuleLoader__.load({
       pixelsLabel: 'Image pixel budget (width×height total)',
       pixelsTip: 'A width×height total-pixel area; oversized images auto-downscale proportionally (both sides, e.g. 2560×1440→~1365×768); ceiling 2048×2048 (intake normalization cap; larger has no effect).',
       pixelsHint: 'Common: 512×512=262144 | 1024×1024=1048576 | 2048×2048=4194304 (default)',
-      saveTip: 'Saving applies the pixel budget to every pi-ai route; Restore default also clears those per-route overrides; after Models-page route edits, change + save to re-unify; DeepSeek native routes unaffected.',
       countLabel: 'Per-message describe cap (images)',
       countTip: 'Lower it to cut multi-image parse time and cost; archived images stay re-viewable via mm_view_image.',
       countHint: 'First N images get descriptions, the rest archive; default 20 = official cap',
@@ -87,8 +85,6 @@ window.__ModuleLoader__.load({
     /* Official-mirrored layout styles only (fields and the save bar bring
      * their own chrome from ui-primitives). */
     const PAGE_CSS = [
-      '.mmrr-card{position:relative;}',
-      '.mmrr-saveinfo{position:absolute;right:0;bottom:6px;}',
       '.mmrr-tip{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:transparent;color:var(--dsw-alias-label-secondary);padding:0;margin-left:4px;cursor:help;vertical-align:middle;}',
       '.mmrr-limits{display:grid;grid-template-columns:minmax(min(220px,100%),3fr) minmax(min(240px,100%),2fr);column-gap:16px;row-gap:0;}',
       '.mmrr-cell{min-width:0;position:relative;}',
@@ -256,7 +252,7 @@ window.__ModuleLoader__.load({
         setNote(fanoutNote(t, applied))
       }
 
-      return createElement('div', { className: 'mmrr-card' },
+      return createElement('div', null,
         createElement(SettingsForm, {
           labels: {
             unavailable: t('formUnavailable'),
@@ -287,10 +283,6 @@ window.__ModuleLoader__.load({
               differs(key) ? createElement('button', {
                 type: 'button', className: 'mmrr-reset', onClick: () => stageReset(key),
               }, t('reset')) : null)))),
-        shell.available ? createElement('span', { className: 'mmrr-saveinfo' },
-          createElement(Tooltip, { label: t('saveTip'), side: 'top', delayMs: 300, maxWidth: 300, portal: true },
-            createElement('span', { className: 'mmrr-tip', 'aria-label': t('saveTip'), role: 'note' },
-              createElement(IconInfoOutlineRegular, { size: 12 })))) : null,
         shell.available && note ? createElement('span', { className: 'mmrr-note', role: 'status' }, note) : null)
     }
 

@@ -194,7 +194,7 @@ test('page view renders the official SettingsForm + SettingsValueField tree with
   // field label carrying its own hover ⓘ Tooltip inline.
   const grid = Array.isArray(form.children) ? form.children[0] : form.children
   assert.equal(grid.props.className, 'mmrr-limits', 'single merged grid child')
-  assert.equal(primitives.calls.tooltips.length, 4, 'one hover ⓘ per field label + one on the save line')
+  assert.equal(primitives.calls.tooltips.length, 3, 'one hover ⓘ per field label')
   assert.equal(primitives.calls.fields.length, 3, 'pixels + count + concurrency official fields')
   const ids = primitives.calls.fields.map((f) => f.id).sort()
   assert.deepEqual(ids, ['mmrr-concurrency', 'mmrr-count', 'mmrr-pixels'])
@@ -213,8 +213,7 @@ test('page view renders the official SettingsForm + SettingsValueField tree with
   assert.equal(cells[2].props.className.includes('mmrr-cell--wide'), true, 'concurrency spans its own full row (locked 2-column layout)')
   // bottom: inline status note only (official hint styling) — the separate
   // re-apply control is gone; change+save re-applies to all routes.
-  assert.equal(tree.children[1].props.className, 'mmrr-saveinfo', 'save-line hover ⓘ present')
-  assert.equal(tree.children[2], null, 'no note rendered before any save')
+  assert.equal(tree.children[1], null, 'no note rendered before any save')
 })
 
 test('summary view renders a plain one-liner span', async () => {
