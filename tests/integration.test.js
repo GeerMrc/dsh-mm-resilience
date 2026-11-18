@@ -136,7 +136,7 @@ async function runStep(session, listeners, { messages, modelSelection = { provid
   return session.projectRequest()
 }
 
-test('A. paste → very first request carries zero image bytes; tag text present', async () => {
+test('A. paste → very first request carries zero image bytes; native bubble + context row', async () => {
   const session = new HarnessSession()
   const listeners = makePlugin(fakeLlm())
   const request = await runStep(session, listeners, {
@@ -146,14 +146,20 @@ test('A. paste → very first request carries zero image bytes; tag text present
     }],
   })
   assert.equal(session.liveImageBlocks().length, 0, 'no live image block reaches the request')
-  const texts = request[0].content.filter((b) => b.type === 'text').map((b) => b.text).join('\n')
-  assert.match(texts, /image omitted … sha256:a1/, 'platform placeholder for the offloaded block')
-  assert.match(texts, /图片已归档/, 'adjacent archive tag')
-  assert.match(texts, /机器解析（sz\/vl，可能不准确/, 'provenance line')
-  // Persisted (durable) message keeps the image block — thumbnails survive.
-  const persisted = session.log.at(-1).data.content
+  // User message: native shape — platform placeholder in-request, no plugin text.
+  const userTexts = request[0].content.filter((b) => b.type === 'text').map((b) => b.text).join('\n')
+  assert.match(userTexts, /image omitted … sha256:a1/, 'platform placeholder for the offloaded block')
+  assert.equal(userTexts.includes('机器解析'), false, 'no plugin text in the user bubble')
+  const persisted = session.log[0].data.content
   assert.equal(persisted.filter((b) => b.type === 'image').length, 1)
   assert.equal(persisted.find((b) => b.type === 'image').offloaded, true)
+  // Archive row: separate durable context message (official injection class).
+  const archive = session.log[1]
+  assert.equal(archive.type, 'user/message')
+  assert.equal(archive.data.source.kind, 'mm-image-archive')
+  assert.match(archive.data.content[0].text, /机器解析（sz\/vl，可能不准确/)
+  // The model reads the description from the row on every request.
+  assert.match(request[1].content[0].text, /机器解析/, 'description rides via the context row')
 })
 
 test('B. per-message cap: first image described, second archives without description', async () => {
@@ -165,11 +171,9 @@ test('B. per-message cap: first image described, second archives without descrip
       content: [{ type: 'image', attachment: ref('sha256:x1') }, { type: 'image', attachment: ref('sha256:x2') }],
     }],
   })
-  const tagLines = session.log.at(-1).data.content.filter((b) => b.type === 'text').map((b) => b.text)
-  const x1 = tagLines.find((line) => line.includes('sha256:x1'))
-  const x2 = tagLines.find((line) => line.includes('sha256:x2'))
-  assert.match(x1, /机器解析（sz\/vl/, 'first image described')
-  assert.match(x2, /未解析（超出每条消息解析上限/, 'second image archived without description')
+  const row = session.log.find((e) => e.data?.source?.kind === 'mm-image-archive')
+  assert.match(row.data.content[0].text, /sha256:x1[\s\S]*机器解析（sz\/vl/, 'first image described in the row')
+  assert.equal(row.data.content[0].text.includes('sha256:x2'), false, 'second image absent (over cap, no line)')
   assert.equal(session.liveImageBlocks().length, 0)
 })
 
@@ -185,7 +189,7 @@ test('C. text-only route: archives without description, still zero bytes, no str
   })
   assert.equal(llm.streams.length, 0)
   assert.equal(session.liveImageBlocks().length, 0)
-  assert.match(session.log.at(-1).data.content[1].text, /未解析（/)
+  assert.equal(session.log.filter((e) => e.data?.source?.kind === 'mm-image-archive').length, 0, 'no archive row at all')
 })
 
 test('D. mm_view_image result egress: next pre-step replaces, idempotent, request clean after', async () => {
@@ -282,7 +286,7 @@ test('F. plugin-disabled replay: the log derives without the plugin; no custom e
   // A plugin-less reader folds the same log: messages derivable, thumbnails
   // intact, and the replace-shadowed original leaves the replacement current.
   const derived = session.deriveMessages()
-  assert.equal(derived.length, 2, 'user message + replacement tool result (original shadowed)')
+  assert.equal(derived.length, 3, 'user message + archive row + replacement tool result (original shadowed)')
   assert.equal(derived[0].content.find((b) => b.type === 'image').offloaded, true)
-  assert.equal(derived[1].content.find((b) => b.type === 'image').offloaded, true, 'replacement carries the persisted mark')
+  assert.equal(derived[2].content.find((b) => b.type === 'image').offloaded, true, 'replacement carries the persisted mark')
 })

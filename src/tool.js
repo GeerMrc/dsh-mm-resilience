@@ -22,7 +22,7 @@ const DESCRIPTION = [
 const PARAMETERS = {
   type: 'object',
   properties: {
-    attachmentId: { type: 'string', description: '归档标签中的图片 attachmentId（sha256:…）' },
+    attachmentId: { type: 'string', description: '归档记录中的图片 attachmentId（sha256:…，见图片解析记录行）' },
   },
   required: ['attachmentId'],
   additionalProperties: false,

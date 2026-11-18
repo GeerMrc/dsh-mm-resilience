@@ -1,9 +1,10 @@
 /**
  * dsh-mm-resilience host half.
  *
- * Pure-prevention image governance: every pasted image is parsed once
- * (bounded auxiliary describe), archived in place (`offloaded: true` + an
- * adjacent description tag), and never re-serialized as image bytes by any
+ * Pure-prevention image governance: every pasted image is archived in place
+ * (`offloaded: true`, bubble renders exactly like native DSH) with its
+ * parse-once description carried by a separate context-injection message
+ * (official collapsed row); image bytes are never re-serialized by any
  * later request; re-view happens on explicit demand through the
  * `mm_view_image` tool, whose pixels ride exactly the one request derived
  * next and are egressed by the following pre-step. The describe route is
@@ -15,7 +16,7 @@
  * @module dsh-mm-resilience
  */
 import { Config, materializeConfig } from './config.js'
-import { collectLiveImageRefs, rewriteMessage } from './blocks.js'
+import { archiveContextMessage, collectLiveImageRefs, rewriteMessage } from './blocks.js'
 import { createDescriber } from './describe.js'
 import { createEgressState, egressLiveToolImages } from './egress.js'
 import { createViewImageTool } from './tool.js'
@@ -91,9 +92,17 @@ export function apply(ctx, rawConfig) {
         messages.push(message)
         continue
       }
-      const rewritten = rewriteMessage(message, descriptions)
+      const rewritten = rewriteMessage(message)
       messages.push(rewritten ?? message)
       if (rewritten !== null) changed = true
+    }
+    // Descriptions ride as ONE context-injection message (official collapsed
+    // row via source kind; never inside the user's bubble). No description
+    // succeeded → no row at all.
+    const archive = archiveContextMessage(descriptions, refs)
+    if (archive !== null) {
+      messages.push(archive)
+      changed = true
     }
     return changed ? { ...decision, messages } : decision
   })

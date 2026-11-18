@@ -106,3 +106,7 @@
 ## 附录 2：已覆盖/恢复默认值语义偏离（2026-11-18，用户定夺）
 
 官方 form-model 的 overridden=**用户层存在性**（"an override equal to the composition default is still an override"）。用户实测反馈该语义误导（改回默认仍显示、未保存即显示），定夺改为**有效值≠官方默认**：有效值=合法草稿（编辑中）否则已提交值；invalid 草稿回退已提交值。实现于卡片层（withOverrideRule 包装 model.field 状态），模型/存储层不动（保存/重置/unset 语义不变）。风险注记：若用户保存了"等于默认"的覆盖并期望徽标提示存在性，该信息不再展示（值即默认=无行为差异，无实际损失）。
+
+## 附录 3：描述呈现走官方上下文注入行（2026-11-19，用户定夺）
+
+用户实测否决"标签进用户气泡"（视觉替换了提问文字），确立原则：后端执行可变、前端交互与原生一致、插件信息仅错误呈现。事实链：DSH 铁律"模型可见⟺日志⟺渲染"意味着描述必须渲染于某处；官方对 `source.kind≠'user'` 的 user/message 有原生"上下文注入行"（折叠 DisclosureRow）呈现，且显式支持 merge-extensible 自定义 kind（producer label=kind 字符串）与 form:'notice' 结构化正文。故描述迁移至 source={kind:'mm-image-archive',form:'notice'} 的独立持久消息：用户气泡逐像素原生，描述以折叠行呈现且模型每轮可见（复用不变）；描述失败不产生行。备选"隐身模式"（零行，首问靠模型自主回看）被否——保留了预描述与首问零延迟。

@@ -12,7 +12,7 @@ Edits apply on Save; whenever a value differs from the official default, a Resto
 
 ## Behavior
 
-- Pasting archives in place: thumbnails stay in the transcript, with a machine-description tag (parsed via the session's currently selected model; non-multimodal models archive without a description, by design).
+- Pasting archives in place: your message bubble stays **identical to native DSH** (text + thumbnail); the machine description rides a **collapsed parse-record row** (the official context-injection presentation; parsed via the session's currently selected model — non-multimodal models add no row, by design).
 - On-demand re-view: the model can call `mm_view_image` to view an archived original (image-capable routes only).
 - Saving the pixel budget applies it to every current pi-ai model route; Restore default also clears those per-route overrides.
 - **Master switch = the toggle at this page's top-right**: off restores official DSH behavior; your settings persist across toggles.

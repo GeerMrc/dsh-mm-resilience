@@ -4,6 +4,15 @@
 
 ## 0.0.1（未发布）
 
+### 2026-11-19 描述呈现重构：气泡回归原生，描述走官方上下文注入行（用户定夺 A 方案）
+
+- 现象：实测发现解析结果+模型信息以长标签渲染进用户气泡，且插在图片与用户提问之间，视觉上"替换"了用户输入（日志取证：用户文字实际在档，为渲染顺序+标签冗长所致）
+- 定夺原则：插件只改后端执行方式；前端交互与原生 DSH 一致；插件信息仅错误场景呈现
+- 实现：用户消息仅打 offloaded 标记（气泡逐像素原生）；描述改由**独立持久消息**承载——source `{kind:'mm-image-archive', form:'notice'}`，命中 DSH 官方上下文注入渲染（`source.kind≠'user'` → ContextInjectionRow 折叠行，event-projection.ts 对自定义 kind 一等支持）；描述失败/纯文本路由→不产生任何行；解析/回看/复用/出清机制不变
+- 证据链：ui-chat conversation-nodes/message.ts:100（kind≠user→context）、event-projection.ts:56-72（自定义 kind→inject 行+label）、KNOWN_FORMS 含 notice
+- 测试：blocks/entry/integration 全部改写为上下文行语义（73/73）
+
+
 ### 2026-11-18 插件页详情文档与 README 分离（用户定夺）
 
 - 现象：插件页红框长文=包内 README.md 回退渲染，开发者向内容（安装命令/测试说明）直达终端用户

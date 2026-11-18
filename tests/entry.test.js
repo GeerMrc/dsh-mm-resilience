@@ -78,15 +78,23 @@ test('apply registers the pre-step listener and the route-gated tool uncondition
   assert.equal(typeof ctx.registeredTools[0].options.when, 'function')
 })
 
-test('pre-step: claimed images archived with description tag on the session route', async () => {
+test('pre-step: user message stays native (offloaded mark only) + one context message carries descriptions', async () => {
   const ctx = fakeContext()
   apply(ctx, {})
   const decision = await runPreStep(ctx)
   assert.equal(decision.kind, 'enter')
-  const content = decision.messages[0].content
-  assert.equal(content[1].offloaded, true)
-  assert.equal(content[2].type, 'text')
-  assert.match(content[2].text, /机器解析（sz\/vl/)
+  // User message: original shape — no tag block inserted.
+  const userMessage = decision.messages[0]
+  assert.equal(userMessage.content.length, 2)
+  assert.deepEqual(userMessage.content.map((b) => b.type), ['text', 'image'])
+  assert.equal(userMessage.content[1].offloaded, true)
+  assert.equal(userMessage.source.kind, 'user')
+  // Context message: official injection classification.
+  const archive = decision.messages[1]
+  assert.equal(archive.role, 'user')
+  assert.equal(archive.source.kind, 'mm-image-archive')
+  assert.equal(archive.source.form, 'notice')
+  assert.match(archive.content[0].text, /机器解析（sz\/vl/)
 })
 
 test('pre-step: reject decisions pass through untouched', async () => {
@@ -114,12 +122,12 @@ test('pre-step: egress failures are tolerated and the rewrite still applies', as
   assert.equal(decision.messages[0].content[1].offloaded, true)
 })
 
-test('pre-step: text-only session route archives without description (honest unavailability)', async () => {
+test('pre-step: text-only route archives with NO context message (zero front-end footprint)', async () => {
   const ctx = fakeContext({ llm: fakeLlm({ capable: false }) })
   apply(ctx, {})
   const decision = await runPreStep(ctx)
   assert.equal(decision.messages[0].content[1].offloaded, true)
-  assert.match(decision.messages[0].content[2].text, /未解析（/)
+  assert.equal(decision.messages.length, 1, 'no archive row when nothing was described')
 })
 
 test('pre-step: runtime-context messages are left for the loop to re-project', async () => {
@@ -134,6 +142,7 @@ test('pre-step: runtime-context messages are left for the loop to re-project', a
   const decision = await runPreStep(ctx, {}, { messages: [runtimeContextMessage, imageMessage('a')] })
   assert.equal(decision.messages[0], runtimeContextMessage)
   assert.equal(decision.messages[1].content[1].offloaded, true)
+  assert.equal(decision.messages[2].source.kind, 'mm-image-archive', 'archive row still follows described images')
 })
 
 test('liveness: editing maxDescribedPerMessage on the live config object takes effect on the next event', async () => {
@@ -151,16 +160,18 @@ test('liveness: editing maxDescribedPerMessage on the live config object takes e
   const invoke = () => listener(payload, async () => ({ kind: 'enter', messages: [twoImages] }))
 
   const full = await invoke()
-  const fullTags = full.messages[0].content.filter((block) => block.type === 'text' && block.text.includes('图片已归档'))
-  assert.equal(fullTags.length, 2)
-  assert.match(fullTags[0].text, /机器解析/)
-  assert.match(fullTags[1].text, /机器解析/, 'cap 20: both images described')
+  const fullRow = full.messages[1]
+  assert.equal(fullRow.source.kind, 'mm-image-archive', 'archive row present')
+  assert.match(fullRow.content[0].text, /a/, 'cap 20: first image described')
+  assert.match(fullRow.content[0].text, /b/, 'cap 20: second image described too')
+
 
   config.maxDescribedPerMessage = 1
   const capped = await invoke()
-  const cappedTags = capped.messages[0].content.filter((block) => block.type === 'text' && block.text.includes('图片已归档'))
-  assert.equal(cappedTags.length, 2)
-  assert.match(cappedTags[1].text, /未解析（超出每条消息解析上限/, 'live cap 1: second image archives without description')
+  const archiveRow = capped.messages[1]
+  assert.equal(archiveRow.source.kind, 'mm-image-archive')
+  assert.match(archiveRow.content[0].text, /机器解析/, 'live cap 1: only the first image described')
+  assert.equal(archiveRow.content[0].text.includes(') b '), false, 'second image absent from the row')
 })
 
 test('exports: plugin surface (apply + schemastery Config with official defaults)', async () => {

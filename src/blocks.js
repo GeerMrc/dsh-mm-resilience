@@ -1,8 +1,12 @@
 /**
  * Pure content-block helpers for the hybrid archive rewrite: a pasted image
  * keeps its block identity and gains `offloaded: true` (the sanctioned
- * "preserved by a message rewrite" origin, ImageBlock docs), with an
- * adjacent text block carrying the machine description and re-view pointer.
+ * "preserved by a message rewrite" origin, ImageBlock docs) — the user's
+ * message stays byte-identical to the original apart from that mark, so the
+ * transcript bubble renders exactly like native DSH. Descriptions live in a
+ * SEPARATE durable message whose source kind classifies it as a context
+ * injection row (the official collapsed presentation for backend-injected
+ * content), keeping the model-visible archive off the user's bubble.
  *
  * @module dsh-mm-resilience/blocks
  */
@@ -18,40 +22,16 @@ export function isLiveImageBlock(block) {
   return block !== null && typeof block === 'object' && block.type === 'image' && block.offloaded !== true
 }
 
-/** Human-readable identity used in tags: `name (attachmentId) WxH`. */
-function identityOf(ref) {
-  const name = ref.name === undefined ? String(ref.attachmentId) : `${ref.name} (${ref.attachmentId})`
-  return `${name} ${ref.width}x${ref.height}`
-}
-
-/**
- * Build the archive tag text block placed right after each archived image.
- *
- * @param {import('./blocks.js').ImageRef} ref - the image's attachment ref.
- * @param {{ text: string, provider: string, model: string } | null} description
- * @returns {{ type: 'text', text: string }}
- */
-export function archiveTag(ref, description) {
-  const identity = identityOf(ref)
-  if (description === null) {
-    return { type: 'text', text: `[图片已归档 ${identity}] 未解析（超出每条消息解析上限或路由不可用；可用 mm_view_image 回看原图）` }
-  }
-  return {
-    type: 'text',
-    text: `[图片已归档 ${identity}] 机器解析（${description.provider}/${description.model}，可能不准确；可用 mm_view_image 回看原图）：${description.text}`,
-  }
-}
-
 /**
  * Rewrite one claimed user message: every live image block becomes
- * `{ ...block, offloaded: true }` followed by its archive tag; all other
- * blocks and the message identity (id/role/source) are preserved verbatim.
+ * `{ ...block, offloaded: true }`; all other blocks and the message identity
+ * (id/role/source) are preserved verbatim. No text is added — the transcript
+ * stays identical to native DSH.
  *
  * @param {{ content?: readonly unknown[] }} message
- * @param {Map<string, { text: string, provider: string, model: string } | null>} descriptions
  * @returns {object | null} the rewritten message, or null when nothing changed.
  */
-export function rewriteMessage(message, descriptions) {
+export function rewriteMessage(message) {
   if (!Array.isArray(message?.content)) return null
   let changed = false
   const out = []
@@ -59,7 +39,6 @@ export function rewriteMessage(message, descriptions) {
     if (isLiveImageBlock(block)) {
       changed = true
       out.push(Object.freeze({ ...block, offloaded: true }))
-      out.push(archiveTag(block.attachment, descriptions.get(block.attachment.attachmentId) ?? null))
     } else {
       out.push(block)
     }
@@ -90,4 +69,33 @@ export function collectLiveImageRefs(messages) {
     }
   }
   return refs
+}
+
+/**
+ * Build the archive context message carrying the successful descriptions:
+ * a durable user/message whose source kind (`mm-image-archive`, form
+ * `notice`) classifies it as a context-injection row — the official
+ * collapsed presentation — so the descriptions stay model-visible every
+ * request without touching the user's bubble. Returns null when nothing was
+ * described (failed/text-only describes add NO row at all).
+ *
+ * @param {Map<string, { text: string, provider: string, model: string }>} descriptions
+ * @param {object[]} refs - unique live image attachment refs for this batch.
+ * @returns {object | null} the frozen context message, or null.
+ */
+export function archiveContextMessage(descriptions, refs) {
+  const lines = []
+  for (const ref of refs) {
+    const entry = descriptions.get(ref.attachmentId)
+    if (entry === undefined) continue
+    const identity = ref.name === undefined ? String(ref.attachmentId) : `${ref.name} (${ref.attachmentId})`
+    lines.push(`[图片 ${identity} ${ref.width}x${ref.height}] 机器解析（${entry.provider}/${entry.model}，可能不准确；可用 mm_view_image 回看原图）：${entry.text}`)
+  }
+  if (lines.length === 0) return null
+  return Object.freeze({
+    id: globalThis.crypto.randomUUID(),
+    role: 'user',
+    content: Object.freeze([Object.freeze({ type: 'text', text: lines.join('\n') })]),
+    source: Object.freeze({ kind: 'mm-image-archive', form: 'notice' }),
+  })
 }
