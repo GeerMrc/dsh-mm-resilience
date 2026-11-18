@@ -93,6 +93,7 @@ function createFakeScope(initialValue) {
   const mutateCalls = []
   const scope = {
     mutateCalls,
+    listeners,
     getSnapshot: () => state,
     subscribe: (listener) => {
       listeners.add(listener)
@@ -328,4 +329,28 @@ test('V1.F StrictMode/remount safety: hoisted controller survives remount; edits
   miniReact.rerender()
   assert.equal(scope.mutateCalls.length, 1, 'save lands through the surviving controller')
   assert.equal(formOf().props.state.dirty, false)
+})
+
+test('V1.G override rule: badge follows value-vs-default, not staging (user-directed semantics)', async () => {
+  const { query, miniReact } = await mountCard()
+  const pixelsOf = () => query().fields.find((f) => f.props.id === 'mmrr-pixels')
+  // Default state: no affordances.
+  assert.equal(pixelsOf().props.overridden, false)
+  // Edit 4194304→1048576 (differs from default): affordances show while staged.
+  pixelsOf().props.onEdit('1048576')
+  miniReact.rerender()
+  assert.equal(pixelsOf().props.overridden, true, 'differs-from-default draft shows 已覆盖/恢复默认')
+  // Edit back to 4194304 (the default): affordances hide IMMEDIATELY (the
+  // stale badge the user reported), while the save correctly sees the draft
+  // equal the committed value → not dirty.
+  pixelsOf().props.onEdit('4194304')
+  miniReact.rerender()
+  assert.equal(pixelsOf().props.overridden, false, 'back-to-default draft hides the affordances')
+  assert.equal(query().form.props.state.dirty, false, 'official form: draft equals committed → not dirty')
+  // A SAVED override equal to the default shows none either (value rule).
+  const { scope } = await mountCard()
+  scope.getSnapshot().user.maxDescribedPerMessage = 20 // presence, equal to default
+  scope.getSnapshot().value.maxDescribedPerMessage = 20
+  for (const listener of scope.listeners) listener()
+  assert.equal(query().fields.find((f) => f.props.id === 'mmrr-count').props.overridden, false, 'presence-equal-to-default shows none (deliberate deviation from official presence rule)')
 })

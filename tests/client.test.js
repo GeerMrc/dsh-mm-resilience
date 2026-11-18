@@ -190,10 +190,11 @@ test('page view renders the official SettingsForm + SettingsValueField tree with
   assert.equal(typeof form.props.onSave, 'function')
   assert.equal(typeof form.props.onDiscard, 'function')
   assert.deepEqual(Object.keys(form.props.labels).sort(), ['readOnly', 'save', 'saveFailed', 'saving', 'unavailable'])
-  // two sections × heading(row with Tooltip ⓘ) + 3 official fields in cells
-  const sections = form.children
-  assert.equal(sections.length, 2)
-  assert.equal(primitives.calls.tooltips.length, 2, 'one hover ⓘ per section heading')
+  // one merged region (no section headings): a single grid of 3 cells, each
+  // field label carrying its own hover ⓘ Tooltip inline.
+  const grid = Array.isArray(form.children) ? form.children[0] : form.children
+  assert.equal(grid.props.className, 'mmrr-limits', 'single merged grid child')
+  assert.equal(primitives.calls.tooltips.length, 3, 'one hover ⓘ per field label')
   assert.equal(primitives.calls.fields.length, 3, 'pixels + count + concurrency official fields')
   const ids = primitives.calls.fields.map((f) => f.id).sort()
   assert.deepEqual(ids, ['mmrr-concurrency', 'mmrr-count', 'mmrr-pixels'])

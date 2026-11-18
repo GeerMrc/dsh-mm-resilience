@@ -40,15 +40,14 @@ window.__ModuleLoader__.load({
     const zh = {
       formUnavailable: '设置暂不可用', formReadOnly: '只读', formSaveFailed: '保存失败',
       save: '保存', saving: '保存中…',
-      sectionLimits: '图片上限',
-      sectionLimitsTip: '默认值即 DSH 官方默认（安装即接管一致态）。像素上限保存时应用到全部 pi-ai 模型路由，「恢复默认」同时清除各路由覆盖；模型页改动过路由后，改值→保存即可重新统一；DeepSeek 原生路由不受影响。',
-      sectionParsing: '图片解析',
-      sectionParsingTip: '解析经会话当前所选模型进行；非多模态模型则解析不可用（归档不带描述）。并行数为贴图入会时的前置描述并发，完成后主请求才发出。',
       pixelsLabel: '图片像素上限（宽×高总像素）',
+      pixelsTip: '默认值即官方默认（安装即接管一致态）；保存时应用到全部 pi-ai 模型路由，「恢复默认」同时清除各路由覆盖；上限 2048×2048（入会归一化封顶）；模型页改动过路由后改值→保存即可重新统一；DeepSeek 原生路由不受影响。',
       pixelsHint: '超出自动等比压缩（官方管线）；默认 2048×2048=官方默认；上限 2048×2048；保存时应用到全部 pi-ai 路由（改值→保存即可重新应用）',
       countLabel: '每条消息解析上限（张）',
+      countTip: '对应官方每消息图片准入上限（20/条）的接管语义：默认 20=全部获描述；下调后超出部分仅归档（可 mm_view_image 回看），降低多图解析耗时与成本。',
       countHint: '前 N 张获机器描述，其余仅归档（可 mm_view_image 回看）；默认 20=官方每消息上限',
       concurrencyLabel: '多图解析并行数',
+      concurrencyTip: '解析经会话当前所选模型进行（无独立路由；非多模态模型则解析不可用=预期行为）。此参数为贴图入会时单图描述调用的并发数，全部完成后主请求才发出，不与会话模型执行并行冲突。',
       concurrencyHint: '一条消息贴多图时同时进行的解析调用数（1–8，默认 4）；解析完成后主请求才发出',
       overridden: '已覆盖', reset: '恢复默认', invalid: '无效值',
       saveDiag: '保存未落库（诊断信息）',
@@ -62,15 +61,14 @@ window.__ModuleLoader__.load({
     const en = {
       formUnavailable: 'Settings unavailable', formReadOnly: 'Read-only', formSaveFailed: 'Save failed',
       save: 'Save', saving: 'Saving…',
-      sectionLimits: 'Image Limits',
-      sectionLimitsTip: 'Defaults ARE the DSH official defaults (install = takeover parity). The pixel budget applies to every pi-ai route on save; "Restore default" also clears per-route overrides; after editing routes on the Models page, change the value and save to re-unify; DeepSeek native routes are unaffected.',
-      sectionParsing: 'Image Parsing',
-      sectionParsingTip: 'Parsing uses the session\u2019s currently selected model; non-multimodal models leave parsing unavailable (archived without description). Concurrency bounds the pre-entry describe calls; the main request waits for them.',
       pixelsLabel: 'Image pixel budget (width×height total)',
+      pixelsTip: 'Default = the official default (install = takeover parity); saving applies to every pi-ai route and "Restore default" also clears per-route overrides; ceiling 2048×2048 (intake normalization cap); after Models-page route edits, change + save to re-unify; DeepSeek native routes unaffected.',
       pixelsHint: 'Oversized images auto-downscale (native pipeline); default 2048×2048 = official; ceiling 2048×2048; saving applies to all pi-ai routes (change + save to re-apply)',
       countLabel: 'Per-message describe cap (images)',
+      countTip: 'Mirrors the official per-message admission cap (20/message): default 20 = all described; lower it and images beyond N archive without a description (re-viewable via mm_view_image), cutting multi-image parse time and cost.',
       countHint: 'First N pasted images get a machine description, the rest archive (re-viewable via mm_view_image); default 20 = official per-message cap',
       concurrencyLabel: 'Multi-image parse concurrency',
+      concurrencyTip: 'Parsing uses the session\u2019s currently selected model (no separate route; non-multimodal models leave parsing unavailable by design). This bounds single-image describe calls at paste time; the main request waits for them and never races the session model.',
       concurrencyHint: 'Describe calls running at once for a multi-image paste (1–8, default 4); the main request waits until parsing finishes',
       overridden: 'Overridden', reset: 'Restore default', invalid: 'Invalid',
       saveDiag: 'Save did not land (diagnostics)',
@@ -85,10 +83,7 @@ window.__ModuleLoader__.load({
     /* Official-mirrored layout styles only (fields and the save bar bring
      * their own chrome from ui-primitives). */
     const PAGE_CSS = [
-      '.mmrr-section{min-width:0;padding:16px 0;}',
-      '.mmrr-headingRow{display:flex;align-items:center;gap:6px;}',
-      '.mmrr-heading{margin:0;font-size:13px;font-weight:600;line-height:1.5;color:var(--dsw-alias-label-primary);}',
-      '.mmrr-tip{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:none;background:transparent;color:var(--dsw-alias-label-secondary);padding:0;cursor:default;}',
+      '.mmrr-tip{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:transparent;color:var(--dsw-alias-label-secondary);padding:0;margin-left:4px;cursor:help;vertical-align:middle;}',
       '.mmrr-limits{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:16px;}',
       '.mmrr-cell{min-width:0;}',
       '.mmrr-cell input{min-width:0;font-variant-numeric:tabular-nums;}',
@@ -147,13 +142,35 @@ window.__ModuleLoader__.load({
       return attempt()
     }
 
-    function HeadingWithTip(props) {
-      const { id, text, tip } = props
-      return createElement('div', { className: 'mmrr-headingRow' },
-        createElement('h3', { className: 'mmrr-heading', id }, text),
+    /** Official-default values per UI field key (the takeover baseline). */
+    const FIELD_DEFAULTS = { pixels: 4_194_304, count: 20, concurrency: 4 }
+    /** UI field key → schema field key (committed values are schema-keyed). */
+    const SCHEMA_KEY = { pixels: 'maxImagePixels', count: 'maxDescribedPerMessage', concurrency: 'describeConcurrency' }
+
+    /**
+     * Field label as a node: the label text with a hover ⓘ Tooltip beside
+     * it, rendered inline inside the official field's own label row (the
+     * official component renders `{props.label}` verbatim).
+     */
+    function labelWithTip(text, tip) {
+      return createElement('span', null, text,
         createElement(Tooltip, { label: tip, side: 'bottom', delayMs: 300, maxWidth: 300, portal: true },
-          createElement('button', { type: 'button', className: 'mmrr-tip', 'aria-label': tip },
+          createElement('span', { className: 'mmrr-tip', 'aria-label': tip, role: 'note' },
             createElement(IconInfoOutlineRegular, { size: 12 }))))
+    }
+
+    /**
+     * User-directed override semantics (deviates from the official
+     * user-layer-PRESENCE rule): 已覆盖/恢复默认 show exactly when the
+     * effective value — the valid staged draft if editing, else the
+     * committed value — differs from the official default. Editing a value
+     * back to the default therefore hides the affordances immediately, and a
+     * saved override equal to the default shows none.
+     */
+    function withOverrideRule(key, state, committed) {
+      const staged = state.invalid ? undefined : Number(state.text)
+      const effective = staged !== undefined && Number.isFinite(staged) ? staged : committed
+      return { ...state, overridden: effective !== undefined && effective !== FIELD_DEFAULTS[key] }
     }
 
     function fanoutNote(t, applied) {
@@ -183,24 +200,28 @@ window.__ModuleLoader__.load({
       // every pi-ai route; 'clear' (恢复默认) unsets the per-route overrides.
       const [pixelStaged, setPixelStaged] = useState(null)
       const actions = model.actions()
-      const { shell, pixels, count, concurrency } = state
+      const { shell } = state
       const disabled = !shell.writable || shell.saving
+      const committed = scope.getSnapshot().value ?? {}
 
-      const fieldProps = (fieldState, key, labelKey, hintKey) => ({
-        id: `mmrr-${key}`,
-        label: t(labelKey),
-        hint: t(hintKey),
-        numeric: true,
-        ...fieldState,
-        overriddenLabel: t('overridden'),
-        resetLabel: t('reset'),
-        invalidLabel: t('invalid'),
-        disabled,
-      })
+      const fieldProps = (key, labelKey, hintKey) => {
+        const fieldState = withOverrideRule(key, state[key], committed[SCHEMA_KEY[key]])
+        return {
+          id: `mmrr-${key}`,
+          label: labelWithTip(t(labelKey), t(`${key}Tip`)),
+          hint: t(hintKey),
+          numeric: true,
+          ...fieldState,
+          overriddenLabel: t('overridden'),
+          resetLabel: t('reset'),
+          invalidLabel: t('invalid'),
+          disabled,
+        }
+      }
 
       const onSave = async () => {
         const staged = pixelStaged
-        const stagedText = pixels.text
+        const stagedText = state.pixels.text
         setNote('')
         await model.save()
         const after = model.shell()
@@ -232,30 +253,27 @@ window.__ModuleLoader__.load({
           onSave,
           onDiscard: actions.discard,
         },
-          createElement('section', { className: 'mmrr-section', key: 'limits', 'aria-labelledby': 'mmrr-limits-h' },
-            createElement(HeadingWithTip, { id: 'mmrr-limits-h', text: t('sectionLimits'), tip: t('sectionLimitsTip') }),
-            createElement('div', { className: 'mmrr-limits' },
-              createElement('div', { className: 'mmrr-cell', key: 'cell-pixels' },
-                createElement(SettingsValueField, {
-                  ...fieldProps(pixels, 'pixels', 'pixelsLabel', 'pixelsHint'),
-                  onEdit: (text) => { setPixelStaged('set'); actions.edit('maxImagePixels', text) },
-                  onReset: () => { setPixelStaged('clear'); actions.resetField('maxImagePixels') },
-                })),
-              createElement('div', { className: 'mmrr-cell', key: 'cell-count' },
-                createElement(SettingsValueField, {
-                  ...fieldProps(count, 'count', 'countLabel', 'countHint'),
-                  onEdit: (text) => actions.edit('maxDescribedPerMessage', text),
-                  onReset: () => actions.resetField('maxDescribedPerMessage'),
-                })))),
-          createElement('section', { className: 'mmrr-section', key: 'parsing', 'aria-labelledby': 'mmrr-parsing-h' },
-            createElement(HeadingWithTip, { id: 'mmrr-parsing-h', text: t('sectionParsing'), tip: t('sectionParsingTip') }),
-            createElement('div', { className: 'mmrr-limits' },
-              createElement('div', { className: 'mmrr-cell', key: 'cell-concurrency' },
-                createElement(SettingsValueField, {
-                  ...fieldProps(concurrency, 'concurrency', 'concurrencyLabel', 'concurrencyHint'),
-                  onEdit: (text) => actions.edit('describeConcurrency', text),
-                  onReset: () => actions.resetField('describeConcurrency'),
-                }))))),
+          // One merged user-settings region: three fields, no section
+          // headings (the page already draws the plugin title/description).
+          createElement('div', { className: 'mmrr-limits' },
+            createElement('div', { className: 'mmrr-cell', key: 'cell-pixels' },
+              createElement(SettingsValueField, {
+                ...fieldProps('pixels', 'pixelsLabel', 'pixelsHint'),
+                onEdit: (text) => { setPixelStaged('set'); actions.edit('maxImagePixels', text) },
+                onReset: () => { setPixelStaged('clear'); actions.resetField('maxImagePixels') },
+              })),
+            createElement('div', { className: 'mmrr-cell', key: 'cell-count' },
+              createElement(SettingsValueField, {
+                ...fieldProps('count', 'countLabel', 'countHint'),
+                onEdit: (text) => actions.edit('maxDescribedPerMessage', text),
+                onReset: () => actions.resetField('maxDescribedPerMessage'),
+              })),
+            createElement('div', { className: 'mmrr-cell', key: 'cell-concurrency' },
+              createElement(SettingsValueField, {
+                ...fieldProps('concurrency', 'concurrencyLabel', 'concurrencyHint'),
+                onEdit: (text) => actions.edit('describeConcurrency', text),
+                onReset: () => actions.resetField('describeConcurrency'),
+              })))),
         shell.available && note ? createElement('span', { className: 'mmrr-note', role: 'status' }, note) : null)
     }
 

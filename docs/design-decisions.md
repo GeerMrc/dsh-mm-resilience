@@ -102,3 +102,7 @@
 - 「二次审核修正 2」中 maxDescribedPerMessage 默认 8 → **已被官方接管值 20 取代**（本轮定夺 3）
 - 「复审修复 2」的 per-event enabled 门 → **已移除**（总开关=插件页官方启停，本轮定夺 4）
 - 「复审修复 5」NumberField 本地文本 override → **随手绘字段一并废弃**（官方 SettingsValueField 自带草稿/校验/恢复默认）
+
+## 附录 2：已覆盖/恢复默认值语义偏离（2026-11-18，用户定夺）
+
+官方 form-model 的 overridden=**用户层存在性**（"an override equal to the composition default is still an override"）。用户实测反馈该语义误导（改回默认仍显示、未保存即显示），定夺改为**有效值≠官方默认**：有效值=合法草稿（编辑中）否则已提交值；invalid 草稿回退已提交值。实现于卡片层（withOverrideRule 包装 model.field 状态），模型/存储层不动（保存/重置/unset 语义不变）。风险注记：若用户保存了"等于默认"的覆盖并期望徽标提示存在性，该信息不再展示（值即默认=无行为差异，无实际损失）。
