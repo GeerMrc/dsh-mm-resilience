@@ -87,8 +87,8 @@ window.__ModuleLoader__.load({
     const PAGE_CSS = [
       '.mmrr-tip{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:transparent;color:var(--dsw-alias-label-secondary);padding:0;margin-left:4px;cursor:help;vertical-align:middle;}',
       '.mmrr-limits{display:grid;grid-template-columns:repeat(2,minmax(min(220px,100%),1fr));gap:16px;}',
-      '.mmrr-cell{min-width:0;}',
-      '.mmrr-reset{border:none;background:transparent;padding:6px 0 0;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer;}',
+      '.mmrr-cell{min-width:0;position:relative;}',
+      '.mmrr-reset{position:absolute;top:12px;right:0;border:none;background:transparent;padding:0;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer;}',
       '.mmrr-reset:hover{color:var(--dsw-alias-label-primary);}',
       '.mmrr-cell--wide{grid-column:1 / -1;}',
       '.mmrr-cell input{min-width:0;font-variant-numeric:tabular-nums;}',
