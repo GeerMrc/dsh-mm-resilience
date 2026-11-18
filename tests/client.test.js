@@ -208,8 +208,9 @@ test('page view renders the official SettingsForm + SettingsValueField tree with
   // each field wrapped in a .mmrr-cell (breaks the official .field + .field
   // sibling separator that produced the orphan half-width line)
   const cells = []
-  walk(tree, (node) => { if (node.props?.className === 'mmrr-cell') cells.push(node) })
+  walk(tree, (node) => { if (typeof node.props?.className === 'string' && node.props.className.includes('mmrr-cell')) cells.push(node) })
   assert.equal(cells.length, 3)
+  assert.equal(cells[2].props.className.includes('mmrr-cell--wide'), true, 'concurrency spans its own full row (locked 2-column layout)')
   // bottom: inline status note only (official hint styling) — the separate
   // re-apply control is gone; change+save re-applies to all routes.
   assert.equal(tree.children[1], null, 'no note rendered before any save')

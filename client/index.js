@@ -84,8 +84,9 @@ window.__ModuleLoader__.load({
      * their own chrome from ui-primitives). */
     const PAGE_CSS = [
       '.mmrr-tip{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:transparent;color:var(--dsw-alias-label-secondary);padding:0;margin-left:4px;cursor:help;vertical-align:middle;}',
-      '.mmrr-limits{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:16px;}',
+      '.mmrr-limits{display:grid;grid-template-columns:repeat(2,minmax(min(220px,100%),1fr));gap:16px;}',
       '.mmrr-cell{min-width:0;}',
+      '.mmrr-cell--wide{grid-column:1 / -1;}',
       '.mmrr-cell input{min-width:0;font-variant-numeric:tabular-nums;}',
       '.mmrr-note{display:block;margin:0;padding-top:8px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary);}',
     ].join('\n')
@@ -268,7 +269,7 @@ window.__ModuleLoader__.load({
                 onEdit: (text) => actions.edit('maxDescribedPerMessage', text),
                 onReset: () => actions.resetField('maxDescribedPerMessage'),
               })),
-            createElement('div', { className: 'mmrr-cell', key: 'cell-concurrency' },
+            createElement('div', { className: 'mmrr-cell mmrr-cell--wide', key: 'cell-concurrency' },
               createElement(SettingsValueField, {
                 ...fieldProps('concurrency', 'concurrencyLabel', 'concurrencyHint'),
                 onEdit: (text) => actions.edit('describeConcurrency', text),
