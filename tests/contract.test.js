@@ -73,6 +73,22 @@ test('locale: zh/en meta present (client matches only zh|en locale ids)', () => 
   }
 })
 
+test('locale: meta.detail names an existing per-language user doc (plugin-page detail source)', () => {
+  for (const lang of ['zh', 'en']) {
+    const locale = JSON.parse(read(`locale/${lang}.json`))
+    const detail = locale.meta.detail
+    // Official rule (plugin-detail readPackageDocument): '/'-separated,
+    // package-root-relative, .md/.markdown suffix, no ./.. segments,
+    // no backslash, no URL scheme; a missing named file is a hard failure
+    // (no README fallback), so the target MUST exist.
+    assert.equal(typeof detail, 'string')
+    assert.match(detail, /\.(md|markdown)$/)
+    assert.ok(!detail.includes('\\') && !detail.includes(':'))
+    assert.ok(detail.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..'))
+    assert.ok(existsSync(path.join(root, detail)), `${detail} exists`)
+  }
+})
+
 test('client half: prebuilt factory file — classic script shape, package-name id, apply/inject tail', () => {
   const source = read('client/index.js')
   // Classic script served verbatim: no ESM syntax survives the check.

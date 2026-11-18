@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "dsh-mm-resilience",
-    "description": "Every image is parsed once when it first enters the session and archived; later requests never re-send image bytes — root-cause prevention of multimodal session wedges. Pixel budget and per-message describe cap take over the official defaults (editable, restorable); multi-image parse concurrency is configurable; originals re-viewable on demand (mm_view_image)."
+    "description": "Every image is parsed once when it first enters the session and archived; later requests never re-send image bytes — root-cause prevention of multimodal session wedges. Pixel budget and per-message describe cap take over the official defaults (editable, restorable); multi-image parse concurrency is configurable; originals re-viewable on demand (mm_view_image).",
+    "detail": "docs/plugin-page.en.md"
   }
 }

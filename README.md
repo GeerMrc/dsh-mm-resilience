@@ -1,4 +1,6 @@
-# dsh-mm-resilience
+# dsh-mm-resilience（开发者文档）
+
+> 插件页显示的用户文档是 [docs/plugin-page.zh.md](docs/plugin-page.zh.md)（由 locale `meta.detail` 指定，英语言环境读 [en](docs/plugin-page.en.md)）；本 README 面向开发与验收。
 
 DSH 桌面客户端（0.2.2-rc.3 已核验）第三方插件：**图片解析归档复用**——每张图片首次入会时解析一次并归档打标，此后所有请求零图片字节重发，从根源上消灭"多模态网关故障卡死会话"这一故障类（[故障报告](docs/fault-report-session-0e2f3132.md)）。
 
