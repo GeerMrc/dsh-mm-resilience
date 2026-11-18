@@ -184,11 +184,13 @@ async function mountCard(preparedScope) {
   const query = () => {
     const forms = []
     const fields = []
+    const resets = []
     walk(miniReact.mounted(), (node) => {
       if (typeof node.type === 'function' && node.props.state !== undefined && node.props.labels !== undefined) forms.push(node)
       if (typeof node.type === 'function' && typeof node.props.id === 'string' && node.props.id.startsWith('mmrr-') && typeof node.props.onEdit === 'function') fields.push(node)
+      if (node.type === 'button' && node.props?.className === 'mmrr-reset') resets.push(node)
     })
-    return { form: forms[0], fields }
+    return { form: forms[0], fields, resets }
   }
   return { scope, miniReact, query }
 }
@@ -204,11 +206,11 @@ test('V1.A initial: save disabled (not dirty), fields show official defaults', a
 
 test('V1.B edit → dirty → save lands ops → drafts clear → overridden true', async () => {
   const { scope, miniReact, query } = await mountCard()
-  let { fields } = query()
+  let { fields, resets } = query()
   const pixels = fields.find((f) => f.props.id === 'mmrr-pixels')
   pixels.props.onEdit('262144')
   miniReact.rerender()
-  ;({ fields } = query())
+  ;({ fields, resets } = query())
   assert.equal(fields.find((f) => f.props.id === 'mmrr-pixels').props.text, '262144')
   let { form } = query()
   assert.equal(form.props.state.dirty, true, 'save enables after an edit')
@@ -219,21 +221,23 @@ test('V1.B edit → dirty → save lands ops → drafts clear → overridden tru
   assert.deepEqual(scope.mutateCalls[0].ops, [{ op: 'set', path: ['maxImagePixels'], value: 262144 }])
   assert.equal(scope.mutateCalls[0].expectedRevision, 1)
   assert.equal(scope.getSnapshot().value.maxImagePixels, 262144, 'landed in the section')
-  ;({ form, fields } = query())
+  ;({ form, fields, resets } = query())
   assert.equal(form.props.state.dirty, false, 'drafts cleared after landing')
-  assert.equal(fields.find((f) => f.props.id === 'mmrr-pixels').props.overridden, true, 'official 恢复默认 affordance now appears')
+  assert.equal(fields.find((f) => f.props.id === 'mmrr-pixels').props.overridden, false, '已覆盖 badge never renders (user-directed removal)')
+  assert.equal(resets.length, 1, 'our 恢复默认 appears for the value-differs field')
 })
 
 test('V1.C reset → clear op → user layer emptied → official default restored', async () => {
   const { scope, miniReact, query } = await mountCard()
-  let { fields } = query()
+  let { fields, resets } = query()
   fields.find((f) => f.props.id === 'mmrr-pixels').props.onEdit('262144')
   let { form } = query()
   await form.props.onSave()
   miniReact.rerender()
 
-  ;({ fields } = query())
-  fields.find((f) => f.props.id === 'mmrr-pixels').props.onReset()
+  ;({ resets } = query())
+  assert.equal(resets.length, 1, 'reset control present while the override differs')
+  resets[0].props.onClick()
   miniReact.rerender()
   ;({ form } = query())
   assert.equal(form.props.state.dirty, true, 'a staged clear marks the form dirty')
@@ -242,8 +246,8 @@ test('V1.C reset → clear op → user layer emptied → official default restor
   const resetCall = scope.mutateCalls.at(-1)
   assert.deepEqual(resetCall.ops, [{ op: 'unset', path: ['maxImagePixels'] }], 'reset writes the official unset op')
   assert.equal(scope.getSnapshot().value.maxImagePixels, 4_194_304, 'official default re-inherited')
-  ;({ fields } = query())
-  assert.equal(fields.find((f) => f.props.id === 'mmrr-pixels').props.overridden, false, 'override gone — 恢复默认 disappears (official semantics)')
+  ;({ resets } = query())
+  assert.equal(resets.length, 0, 'value back at default — reset control disappears')
 })
 
 test('V1.D invalid draft blocks save (out-of-bounds via our boundedField)', async () => {
@@ -331,26 +335,37 @@ test('V1.F StrictMode/remount safety: hoisted controller survives remount; edits
   assert.equal(formOf().props.state.dirty, false)
 })
 
-test('V1.G override rule: badge follows value-vs-default, not staging (user-directed semantics)', async () => {
+test('V1.G reset-control rule: shows iff value differs from default; saved override equal to default shows none', async () => {
   const { query, miniReact } = await mountCard()
-  const pixelsOf = () => query().fields.find((f) => f.props.id === 'mmrr-pixels')
-  // Default state: no affordances.
-  assert.equal(pixelsOf().props.overridden, false)
-  // Edit 4194304→1048576 (differs from default): affordances show while staged.
-  pixelsOf().props.onEdit('1048576')
+  // Default state: no reset controls, and the official badge is always off.
+  assert.equal(query().resets.length, 0)
+  // Edit pixels 4194304→1048576 (differs): control appears while staged.
+  query().fields.find((f) => f.props.id === 'mmrr-pixels').props.onEdit('1048576')
   miniReact.rerender()
-  assert.equal(pixelsOf().props.overridden, true, 'differs-from-default draft shows 已覆盖/恢复默认')
-  // Edit back to 4194304 (the default): affordances hide IMMEDIATELY (the
-  // stale badge the user reported), while the save correctly sees the draft
-  // equal the committed value → not dirty.
-  pixelsOf().props.onEdit('4194304')
+  assert.equal(query().resets.length, 1)
+  // Edit back to the default: control hides IMMEDIATELY; save sees a draft
+  // equal to the committed value → not dirty.
+  query().fields.find((f) => f.props.id === 'mmrr-pixels').props.onEdit('4194304')
   miniReact.rerender()
-  assert.equal(pixelsOf().props.overridden, false, 'back-to-default draft hides the affordances')
-  assert.equal(query().form.props.state.dirty, false, 'official form: draft equals committed → not dirty')
+  assert.equal(query().resets.length, 0)
+  assert.equal(query().form.props.state.dirty, false)
   // A SAVED override equal to the default shows none either (value rule).
   const { scope } = await mountCard()
   scope.getSnapshot().user.maxDescribedPerMessage = 20 // presence, equal to default
   scope.getSnapshot().value.maxDescribedPerMessage = 20
   for (const listener of scope.listeners) listener()
-  assert.equal(query().fields.find((f) => f.props.id === 'mmrr-count').props.overridden, false, 'presence-equal-to-default shows none (deliberate deviation from official presence rule)')
+  assert.equal(query().resets.length, 0, 'presence-equal-to-default shows none')
+})
+
+test('V1.H save of a non-pixel field lands and shows the 已保存 status line', async () => {
+  const { query, miniReact, scope } = await mountCard()
+  query().fields.find((f) => f.props.id === 'mmrr-count').props.onEdit('10')
+  miniReact.rerender()
+  await query().form.props.onSave()
+  miniReact.rerender()
+  assert.equal(scope.mutateCalls.length, 1)
+  assert.deepEqual(scope.mutateCalls[0].ops, [{ op: 'set', path: ['maxDescribedPerMessage'], value: 10 }])
+  let note = null
+  walk(miniReact.mounted(), (node) => { if (node.props?.role === 'status') note = node })
+  assert.equal(note?.props?.children, 'savedNote', '已保存 status after a substantive save')
 })

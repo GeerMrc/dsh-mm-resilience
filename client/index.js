@@ -49,7 +49,8 @@ window.__ModuleLoader__.load({
       concurrencyLabel: '多图解析并行数',
       concurrencyTip: '解析经会话当前所选模型进行（无独立路由；非多模态模型则解析不可用=预期行为）。此参数为贴图入会时单图描述调用的并发数，全部完成后主请求才发出，不与会话模型执行并行冲突。',
       concurrencyHint: '一条消息贴多图时同时进行的解析调用数（1–8，默认 4）；解析完成后主请求才发出',
-      overridden: '已覆盖', reset: '恢复默认', invalid: '无效值',
+      reset: '恢复默认', invalid: '无效值',
+      savedNote: '已保存',
       saveDiag: '保存未落库（诊断信息）',
       fanoutApplied: '像素上限已应用到 {n} 条 pi-ai 路由',
       fanoutNoProviders: '未发现 pi-ai 路由，跳过应用',
@@ -70,7 +71,8 @@ window.__ModuleLoader__.load({
       concurrencyLabel: 'Multi-image parse concurrency',
       concurrencyTip: 'Parsing uses the session\u2019s currently selected model (no separate route; non-multimodal models leave parsing unavailable by design). This bounds single-image describe calls at paste time; the main request waits for them and never races the session model.',
       concurrencyHint: 'Describe calls running at once for a multi-image paste (1–8, default 4); the main request waits until parsing finishes',
-      overridden: 'Overridden', reset: 'Restore default', invalid: 'Invalid',
+      reset: 'Restore default', invalid: 'Invalid',
+      savedNote: 'Saved',
       saveDiag: 'Save did not land (diagnostics)',
       fanoutApplied: 'Pixel budget applied to {n} pi-ai route(s)',
       fanoutNoProviders: 'No pi-ai routes found; application skipped',
@@ -86,6 +88,8 @@ window.__ModuleLoader__.load({
       '.mmrr-tip{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:transparent;color:var(--dsw-alias-label-secondary);padding:0;margin-left:4px;cursor:help;vertical-align:middle;}',
       '.mmrr-limits{display:grid;grid-template-columns:repeat(2,minmax(min(220px,100%),1fr));gap:16px;}',
       '.mmrr-cell{min-width:0;}',
+      '.mmrr-reset{border:none;background:transparent;padding:6px 0 0;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer;}',
+      '.mmrr-reset:hover{color:var(--dsw-alias-label-primary);}',
       '.mmrr-cell--wide{grid-column:1 / -1;}',
       '.mmrr-cell input{min-width:0;font-variant-numeric:tabular-nums;}',
       '.mmrr-note{display:block;margin:0;padding-top:8px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary);}',
@@ -161,17 +165,17 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * User-directed override semantics (deviates from the official
-     * user-layer-PRESENCE rule): 已覆盖/恢复默认 show exactly when the
+     * User-directed semantics: the official 已覆盖 badge is suppressed
+     * entirely (misleading); our 恢复默认 control shows exactly when the
      * effective value — the valid staged draft if editing, else the
-     * committed value — differs from the official default. Editing a value
-     * back to the default therefore hides the affordances immediately, and a
-     * saved override equal to the default shows none.
+     * committed value — differs from the official default, so editing back
+     * to the default hides it immediately. A save that lands shows 已保存
+     * in the status line instead of any badge.
      */
-    function withOverrideRule(key, state, committed) {
+    function differsFromDefault(key, state, committed) {
       const staged = state.invalid ? undefined : Number(state.text)
       const effective = staged !== undefined && Number.isFinite(staged) ? staged : committed
-      return { ...state, overridden: effective !== undefined && effective !== FIELD_DEFAULTS[key] }
+      return effective !== undefined && effective !== FIELD_DEFAULTS[key]
     }
 
     function fanoutNote(t, applied) {
@@ -205,19 +209,23 @@ window.__ModuleLoader__.load({
       const disabled = !shell.writable || shell.saving
       const committed = scope.getSnapshot().value ?? {}
 
-      const fieldProps = (key, labelKey, hintKey) => {
-        const fieldState = withOverrideRule(key, state[key], committed[SCHEMA_KEY[key]])
-        return {
-          id: `mmrr-${key}`,
-          label: labelWithTip(t(labelKey), t(`${key}Tip`)),
-          hint: t(hintKey),
-          numeric: true,
-          ...fieldState,
-          overriddenLabel: t('overridden'),
-          resetLabel: t('reset'),
-          invalidLabel: t('invalid'),
-          disabled,
-        }
+      const fieldProps = (key, labelKey, hintKey) => ({
+        id: `mmrr-${key}`,
+        label: labelWithTip(t(labelKey), t(`${key}Tip`)),
+        hint: t(hintKey),
+        numeric: true,
+        ...state[key],
+        overridden: false,
+        overriddenLabel: '',
+        resetLabel: t('reset'),
+        invalidLabel: t('invalid'),
+        disabled,
+      })
+
+      const differs = (key) => differsFromDefault(key, state[key], committed[SCHEMA_KEY[key]])
+      const stageReset = (key) => {
+        if (key === 'pixels') setPixelStaged('clear')
+        actions.resetField(SCHEMA_KEY[key])
       }
 
       const onSave = async () => {
@@ -236,7 +244,10 @@ window.__ModuleLoader__.load({
           return
         }
         setPixelStaged(null)
-        if (staged === null) return
+        if (staged === null) {
+          setNote(t('savedNote'))
+          return
+        }
         const applied = await fanOutPixelBudget(ctx, staged === 'clear' ? null : Number(stagedText))
         setNote(fanoutNote(t, applied))
       }
@@ -257,24 +268,21 @@ window.__ModuleLoader__.load({
           // One merged user-settings region: three fields, no section
           // headings (the page already draws the plugin title/description).
           createElement('div', { className: 'mmrr-limits' },
-            createElement('div', { className: 'mmrr-cell', key: 'cell-pixels' },
+            ...['pixels', 'count', 'concurrency'].map((key) => createElement('div', {
+              className: key === 'concurrency' ? 'mmrr-cell mmrr-cell--wide' : 'mmrr-cell',
+              key: `cell-${key}`,
+            },
               createElement(SettingsValueField, {
-                ...fieldProps('pixels', 'pixelsLabel', 'pixelsHint'),
-                onEdit: (text) => { setPixelStaged('set'); actions.edit('maxImagePixels', text) },
-                onReset: () => { setPixelStaged('clear'); actions.resetField('maxImagePixels') },
-              })),
-            createElement('div', { className: 'mmrr-cell', key: 'cell-count' },
-              createElement(SettingsValueField, {
-                ...fieldProps('count', 'countLabel', 'countHint'),
-                onEdit: (text) => actions.edit('maxDescribedPerMessage', text),
-                onReset: () => actions.resetField('maxDescribedPerMessage'),
-              })),
-            createElement('div', { className: 'mmrr-cell mmrr-cell--wide', key: 'cell-concurrency' },
-              createElement(SettingsValueField, {
-                ...fieldProps('concurrency', 'concurrencyLabel', 'concurrencyHint'),
-                onEdit: (text) => actions.edit('describeConcurrency', text),
-                onReset: () => actions.resetField('describeConcurrency'),
-              })))),
+                ...fieldProps(key, `${key}Label`, `${key}Hint`),
+                onEdit: (text) => {
+                  if (key === 'pixels') setPixelStaged('set')
+                  actions.edit(SCHEMA_KEY[key], text)
+                },
+                onReset: () => stageReset(key),
+              }),
+              differs(key) ? createElement('button', {
+                type: 'button', className: 'mmrr-reset', onClick: () => stageReset(key),
+              }, t('reset')) : null)))),
         shell.available && note ? createElement('span', { className: 'mmrr-note', role: 'status' }, note) : null)
     }
 
