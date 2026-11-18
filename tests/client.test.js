@@ -209,10 +209,9 @@ test('page view renders the official SettingsForm + SettingsValueField tree with
   const cells = []
   walk(tree, (node) => { if (node.props?.className === 'mmrr-cell') cells.push(node) })
   assert.equal(cells.length, 3)
-  // bottom row: weak re-apply + inline status note (official hint styling)
-  const actionsRow = tree.children[1]
-  assert.equal(actionsRow.props.className, 'mmrr-actions')
-  assert.equal(actionsRow.children[0].props.className, 'mmrr-reapply')
+  // bottom: inline status note only (official hint styling) — the separate
+  // re-apply control is gone; change+save re-applies to all routes.
+  assert.equal(tree.children[1], null, 'no note rendered before any save')
 })
 
 test('summary view renders a plain one-liner span', async () => {

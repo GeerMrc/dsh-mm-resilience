@@ -41,17 +41,16 @@ window.__ModuleLoader__.load({
       formUnavailable: '设置暂不可用', formReadOnly: '只读', formSaveFailed: '保存失败',
       save: '保存', saving: '保存中…',
       sectionLimits: '图片上限',
-      sectionLimitsTip: '默认值即 DSH 官方默认（安装即接管一致态）。像素上限保存时应用到全部 pi-ai 模型路由，「恢复默认」同时清除各路由覆盖；DeepSeek 原生路由不受影响。',
+      sectionLimitsTip: '默认值即 DSH 官方默认（安装即接管一致态）。像素上限保存时应用到全部 pi-ai 模型路由，「恢复默认」同时清除各路由覆盖；模型页改动过路由后，改值→保存即可重新统一；DeepSeek 原生路由不受影响。',
       sectionParsing: '图片解析',
       sectionParsingTip: '解析经会话当前所选模型进行；非多模态模型则解析不可用（归档不带描述）。并行数为贴图入会时的前置描述并发，完成后主请求才发出。',
       pixelsLabel: '图片像素上限（宽×高总像素）',
-      pixelsHint: '超出自动等比压缩（官方管线）；默认 2048×2048=官方默认；上限 2048×2048；保存时应用到全部 pi-ai 路由',
+      pixelsHint: '超出自动等比压缩（官方管线）；默认 2048×2048=官方默认；上限 2048×2048；保存时应用到全部 pi-ai 路由（改值→保存即可重新应用）',
       countLabel: '每条消息解析上限（张）',
       countHint: '前 N 张获机器描述，其余仅归档（可 mm_view_image 回看）；默认 20=官方每消息上限',
       concurrencyLabel: '多图解析并行数',
       concurrencyHint: '一条消息贴多图时同时进行的解析调用数（1–8，默认 4）；解析完成后主请求才发出',
       overridden: '已覆盖', reset: '恢复默认', invalid: '无效值',
-      reapply: '重新应用到全部路由',
       saveDiag: '保存未落库（诊断信息）',
       fanoutApplied: '像素上限已应用到 {n} 条 pi-ai 路由',
       fanoutNoProviders: '未发现 pi-ai 路由，跳过应用',
@@ -64,17 +63,16 @@ window.__ModuleLoader__.load({
       formUnavailable: 'Settings unavailable', formReadOnly: 'Read-only', formSaveFailed: 'Save failed',
       save: 'Save', saving: 'Saving…',
       sectionLimits: 'Image Limits',
-      sectionLimitsTip: 'Defaults ARE the DSH official defaults (install = takeover parity). The pixel budget applies to every pi-ai route on save; "Restore default" also clears per-route overrides; DeepSeek native routes are unaffected.',
+      sectionLimitsTip: 'Defaults ARE the DSH official defaults (install = takeover parity). The pixel budget applies to every pi-ai route on save; "Restore default" also clears per-route overrides; after editing routes on the Models page, change the value and save to re-unify; DeepSeek native routes are unaffected.',
       sectionParsing: 'Image Parsing',
       sectionParsingTip: 'Parsing uses the session\u2019s currently selected model; non-multimodal models leave parsing unavailable (archived without description). Concurrency bounds the pre-entry describe calls; the main request waits for them.',
       pixelsLabel: 'Image pixel budget (width×height total)',
-      pixelsHint: 'Oversized images auto-downscale (native pipeline); default 2048×2048 = official; ceiling 2048×2048; applies to all pi-ai routes on save',
+      pixelsHint: 'Oversized images auto-downscale (native pipeline); default 2048×2048 = official; ceiling 2048×2048; saving applies to all pi-ai routes (change + save to re-apply)',
       countLabel: 'Per-message describe cap (images)',
       countHint: 'First N pasted images get a machine description, the rest archive (re-viewable via mm_view_image); default 20 = official per-message cap',
       concurrencyLabel: 'Multi-image parse concurrency',
       concurrencyHint: 'Describe calls running at once for a multi-image paste (1–8, default 4); the main request waits until parsing finishes',
       overridden: 'Overridden', reset: 'Restore default', invalid: 'Invalid',
-      reapply: 'Re-apply to all routes',
       saveDiag: 'Save did not land (diagnostics)',
       fanoutApplied: 'Pixel budget applied to {n} pi-ai route(s)',
       fanoutNoProviders: 'No pi-ai routes found; application skipped',
@@ -94,10 +92,7 @@ window.__ModuleLoader__.load({
       '.mmrr-limits{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:16px;}',
       '.mmrr-cell{min-width:0;}',
       '.mmrr-cell input{min-width:0;font-variant-numeric:tabular-nums;}',
-      '.mmrr-note{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary);}',
-      '.mmrr-actions{display:flex;align-items:baseline;gap:12px;padding-top:8px;}',
-      '.mmrr-reapply{border:none;background:transparent;padding:0;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer;}',
-      '.mmrr-reapply:hover{color:var(--dsw-alias-label-primary);}',
+      '.mmrr-note{display:block;margin:0;padding-top:8px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary);}',
     ].join('\n')
 
     /**
@@ -224,15 +219,6 @@ window.__ModuleLoader__.load({
         setNote(fanoutNote(t, applied))
       }
 
-      const onReapply = async () => {
-        // The COMMITTED value, never the staged draft (an unsaved or invalid
-        // draft must not be fanned out to every route).
-        const committed = scope.getSnapshot().value?.maxImagePixels
-        if (typeof committed !== 'number' || !Number.isFinite(committed)) return
-        const applied = await fanOutPixelBudget(ctx, committed)
-        setNote(fanoutNote(t, applied))
-      }
-
       return createElement('div', null,
         createElement(SettingsForm, {
           labels: {
@@ -270,9 +256,7 @@ window.__ModuleLoader__.load({
                   onEdit: (text) => actions.edit('describeConcurrency', text),
                   onReset: () => actions.resetField('describeConcurrency'),
                 }))))),
-        shell.available ? createElement('div', { className: 'mmrr-actions' },
-          createElement('button', { type: 'button', className: 'mmrr-reapply', onClick: onReapply }, t('reapply')),
-          note ? createElement('span', { className: 'mmrr-note', role: 'status' }, note) : null) : null)
+        shell.available && note ? createElement('span', { className: 'mmrr-note', role: 'status' }, note) : null)
     }
 
     const inject = ['slots', 'locale', 'configForms']
