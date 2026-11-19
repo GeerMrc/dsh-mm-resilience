@@ -46,9 +46,9 @@
   },
   "devDependencies": {
     "@deepseek-ai/dsh-client-store": "0.1.2-alpha.2",
-    "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-ui-settings": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-settings": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-settings": "0.2.2-rc.5",
     "@deepseek-ai/dsh-util-code-language": "0.1.7-rc.2",
     "@deepseek-ai/dsh-util-workspace-path": "0.1.2-alpha.2",
     "clsx": "^2.1.1",

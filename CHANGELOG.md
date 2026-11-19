@@ -4,6 +4,15 @@
 
 ## 0.0.1（未发布）
 
+### 2026-11-19 版本对齐：桌面已升 0.2.2-rc.5，开发/审核基线同步
+
+- 现象：桌面客户端静默升级至 0.2.2-rc.5（Info.plist 证实），而插件 devDeps 钉 rc.3、本地 harness 克隆无 rc.4/rc.5——审核源码与实机版本脱节风险
+- 根因：桌面端自动更新未纳入开发流程的版本对齐检查（0.2.2-rc.2 时代曾因同因返工）
+- 修复：①三 devDeps（primitives/ui-settings/settings）精确钉 0.2.2-rc.5，全套回归 73/73（pretest 以 rc.5 发布源码编译真模型=类型兼容实证）②harness fetch origin 获 dsh-v0.2.2-rc.3/4/5 tag；核实 rc.3→rc.5 的 settings-form 三文件与 tag 逐字一致、llm-pi-ai/attachment 图片管线零变更——插件零适配
+- 预防：后续源码审核一律引用 `dsh-v0.2.2-rc.5`（或更新 tag），不再用 f3803c9697；桌面每次升级后核对 devDeps/tag 对齐
+- 附带澄清（同日审核）：profile `cordis.patch.yml` 中 `providers.<route>.requestImagePixelBudget` 为官方字段名、插件设置卡保存 fan-out 写入（值=官方默认，存在性覆盖语义；"恢复默认"→保存即 fan-out unset 消行）；插件自身在该文件零持久化（无 mm-resilience 段）
+
+
 ### 2026-11-19 描述呈现重构：气泡回归原生，描述走官方上下文注入行（用户定夺 A 方案）
 
 - 现象：实测发现解析结果+模型信息以长标签渲染进用户气泡，且插在图片与用户提问之间，视觉上"替换"了用户输入（日志取证：用户文字实际在档，为渲染顺序+标签冗长所致）
