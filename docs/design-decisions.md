@@ -1,5 +1,7 @@
 # 设计决策留痕（v2 从零重建，2026-11-17）
 
+> **基线注**：本文件早期引用 `f3803c9697`（0.2.2-alpha.2）——已于 2026-11-19 对齐至 `dsh-v0.2.2-rc.5` tag；后续审核一律引用 rc.5（或更新）。
+
 > 依据：三路独立对抗审核（全部 file:line 实证 @ f3803c9697 = 0.2.2-alpha.2，且承重标识对实机 rc.3 app.asar 逐一核验）+ 5 项执行期核验。每条记录：裁定、证据、落地位置。
 
 ## 二次审核的 6 条修正
@@ -105,8 +107,19 @@
 
 ## 附录 2：已覆盖/恢复默认值语义偏离（2026-11-18，用户定夺）
 
-官方 form-model 的 overridden=**用户层存在性**（"an override equal to the composition default is still an override"）。用户实测反馈该语义误导（改回默认仍显示、未保存即显示），定夺改为**有效值≠官方默认**：有效值=合法草稿（编辑中）否则已提交值；invalid 草稿回退已提交值。实现于卡片层（withOverrideRule 包装 model.field 状态），模型/存储层不动（保存/重置/unset 语义不变）。风险注记：若用户保存了"等于默认"的覆盖并期望徽标提示存在性，该信息不再展示（值即默认=无行为差异，无实际损失）。
+官方 form-model 的 overridden=**用户层存在性**（"an override equal to the composition default is still an override"）。用户实测反馈该语义误导（改回默认仍显示、未保存即显示），定夺改为**有效值≠官方默认**：有效值=合法草稿（编辑中）否则已提交值；invalid 草稿回退已提交值。实现于卡片层（withOverrideRule 包装 model.field 状态；→ **已被 2026-11-18 徽章移除+自有恢复默认按钮取代**，现为 differsFromDefault + .mmrr-reset 控件），模型/存储层不动（保存/重置/unset 语义不变）。风险注记：若用户保存了"等于默认"的覆盖并期望徽标提示存在性，该信息不再展示（值即默认=无行为差异，无实际损失）。
 
 ## 附录 3：描述呈现走官方上下文注入行（2026-11-19，用户定夺）
+
+**KNOWN_FORMS 菜单**（event-projection.ts:38-39，基线 dsh-v0.2.2-rc.5）：
+
+| form 值 | 语义 | 适用场景 |
+|---|---|---|
+| `instructions` | 工作区指令 | AGENTS.md 等指令注入 |
+| `catalog` | 技能目录 | 技能列表注入 |
+| `snapshot` | 快照 | 会话快照 |
+| `notice` | 通知 | **本插件使用**：机器描述通知 |
+| `relay` | 中继 | 转发内容 |
+| `recall` | 召回 | 跨会话召回（显示引用图标） |
 
 用户实测否决"标签进用户气泡"（视觉替换了提问文字），确立原则：后端执行可变、前端交互与原生一致、插件信息仅错误呈现。事实链：DSH 铁律"模型可见⟺日志⟺渲染"意味着描述必须渲染于某处；官方对 `source.kind≠'user'` 的 user/message 有原生"上下文注入行"（折叠 DisclosureRow）呈现，且显式支持 merge-extensible 自定义 kind（producer label=kind 字符串）与 form:'notice' 结构化正文。故描述迁移至 source={kind:'mm-image-archive',form:'notice'} 的独立持久消息：用户气泡逐像素原生，描述以折叠行呈现且模型每轮可见（复用不变）；描述失败不产生行。备选"隐身模式"（零行，首问靠模型自主回看）被否——保留了预描述与首问零延迟。

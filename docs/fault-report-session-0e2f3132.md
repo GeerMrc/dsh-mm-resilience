@@ -1,3 +1,5 @@
+> **呈现方式注**（2026-11-19）：本文所述"旁挂描述标签"已被重构为独立折叠上下文注入行（`source mm-image-archive/notice`）；行号引用以当时提交为基准，当前代码行号已有偏移。
+
 # 故障报告：session-0e2f3132-8eed-4f7d-817e-820935ed04f6
 
 > 取证正本：`~/.dsh/sessions/--Volumes-IPFSJK-Switch-Game-nxnative-dev--/session-0e2f3132-…/session.v4.jsonl`（1,236 行，seq 0→1234）；用户导出 zip（2026-11-16 02:50）为其 turn 6–8 子集，逐字一致。交叉源：`~/.dsh/storages/session_projcache/`、`~/.dsh/attachments/v1/objects/`、DSH 源码（0.2.2-alpha.2 = f3803c9697，与实机 rc.3 承重标识逐项核验一致）。
