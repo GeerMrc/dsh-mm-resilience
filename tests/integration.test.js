@@ -115,6 +115,11 @@ function makePlugin(llm, config = {}) {
   const ctx = {
     llm,
     on: (name, fn) => listeners.set(name, fn),
+    get: () => undefined,
+    effect: (fn) => {
+      const dispose = fn()
+      return () => (typeof dispose === 'function' ? dispose() : undefined)
+    },
     tools: { register: () => () => {} },
   }
   apply(ctx, config)

@@ -26,13 +26,16 @@ function fakeLlm({ capable = true } = {}) {
   }
 }
 
-function fakeContext({ llm = fakeLlm() } = {}) {
+function fakeContext({ llm = fakeLlm(), settings } = {}) {
   const listeners = new Map()
   const registeredTools = []
+  const effects = []
   return {
     llm,
     listeners,
     registeredTools,
+    effects,
+    get: (name) => (name === 'settings' ? settings : undefined),
     on(event, listener) {
       listeners.set(event, listener)
       return () => listeners.delete(event)
@@ -42,6 +45,11 @@ function fakeContext({ llm = fakeLlm() } = {}) {
         registeredTools.push({ definition, options })
         return () => {}
       },
+    },
+    effect(fn, label) {
+      const dispose = fn()
+      effects.push({ label, dispose: typeof dispose === 'function' ? dispose : () => {} })
+      return () => {}
     },
   }
 }
@@ -172,6 +180,57 @@ test('liveness: editing maxDescribedPerMessage on the live config object takes e
   assert.equal(archiveRow.source.kind, 'mm-image-archive')
   assert.match(archiveRow.content[0].text, /机器解析/, 'live cap 1: only the first image described')
   assert.equal(archiveRow.content[0].text.includes(') b '), false, 'second image absent from the row')
+})
+
+test('handover: apply reconciles takeover; dispose reverts to official default', async () => {
+  const DEFAULT = 4_194_304
+  const calls = []
+  // Stateful fake: mutate applies ops into the user layer describe projects.
+  const state = { providers: { sz: { requestImagePixelBudget: DEFAULT } }, userProviders: {} }
+  const settings = {
+    describe: () => [{
+      ns: 'llm-pi-ai',
+      revision: 11,
+      value: { providers: state.providers },
+      user: { providers: state.userProviders },
+      base: { providers: { sz: { requestImagePixelBudget: DEFAULT } } },
+    }],
+    mutate: async (ns, ops, revision) => {
+      calls.push({ ns, ops, revision })
+      for (const op of ops) {
+        const [, route, field] = op.path
+        state.userProviders[route] ??= {}
+        if (op.op === 'set') state.userProviders[route][field] = op.value
+        else delete state.userProviders[route][field]
+      }
+    },
+  }
+  const config = { maxImagePixels: 1_048_576, maxDescribedPerMessage: 20, describeConcurrency: 4 }
+
+  // Custom budget: apply fills the absent sz row (takeover).
+  let ctx = fakeContext({ settings })
+  apply(ctx, config)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepEqual(calls, [{ ns: 'llm-pi-ai', revision: 11, ops: [{ op: 'set', path: ['providers', 'sz', 'requestImagePixelBudget'], value: 1_048_576 }] }])
+
+  // Disable (fiber destroy): the row we just applied (still equal to our
+  // value) is handed back to the official default.
+  const dispose = ctx.effects.find((entry) => entry.label === 'mm-resilience: pixel-budget handover')?.dispose
+  assert.ok(dispose, 'handover dispose effect registered')
+  dispose()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepEqual(calls.at(-1).ops, [{ op: 'unset', path: ['providers', 'sz', 'requestImagePixelBudget'] }])
+  assert.equal(state.userProviders.sz.requestImagePixelBudget, undefined, 'row returned to official inherit')
+
+  // Default budget: apply performs no takeover write (no churn on restart);
+  // a second disable with the default effective finds no matching row.
+  calls.length = 0
+  ctx = fakeContext({ settings })
+  apply(ctx, { ...config, maxImagePixels: DEFAULT })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  ctx.effects.find((entry) => entry.label === 'mm-resilience: pixel-budget handover').dispose()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(calls.length, 0)
 })
 
 test('exports: plugin surface (apply + schemastery Config with official defaults)', async () => {

@@ -7,7 +7,9 @@
  * (official collapsed row); image bytes are never re-serialized by any
  * later request; re-view happens on explicit demand through the
  * `mm_view_image` tool, whose pixels ride exactly the one request derived
- * next and are egressed by the following pre-step. The describe route is
+ * next and are egressed by the following pre-step. The per-route pixel
+ * budget is taken over on start (absent rows filled) and handed back to the
+ * official default on disable (rows still carrying our value are unset). The describe route is
  * ALWAYS the session's current model selection (a non-multimodal model means
  * parsing is unavailable — the honest behavior); the bundle's Plugins-page
  * enable switch is the plugin's only on/off (off unmounts everything and
@@ -20,6 +22,7 @@ import { archiveContextMessage, collectLiveImageRefs, rewriteMessage } from './b
 import { createDescriber } from './describe.js'
 import { createEgressState, egressLiveToolImages } from './egress.js'
 import { createViewImageTool } from './tool.js'
+import { reconcileTakeover, revertHandover } from './handover.js'
 
 export { Config }
 
@@ -48,6 +51,16 @@ export function apply(ctx, rawConfig) {
 
   const { whenHandler, ...toolDefinition } = createViewImageTool({ llm: ctx.llm, describer })
   ctx.tools.register(toolDefinition, { when: whenHandler })
+
+  // Symmetric takeover/handover of the official per-route pixel budget: on
+  // start (and re-enable), fill budget rows absent from the profile with the
+  // effective budget; on disable (fiber destroy), unset rows still carrying
+  // our value so the official default takes over again. Divergent manual
+  // rows are never touched; both paths are warn-only (see handover.js).
+  const settings = () => (typeof ctx.get === 'function' ? ctx.get('settings') : undefined)
+  const effectivePixels = () => liveConfig().maxImagePixels
+  void reconcileTakeover(settings(), effectivePixels())
+  ctx.effect(() => () => { void revertHandover(settings(), effectivePixels()) }, 'mm-resilience: pixel-budget handover')
 
   ctx.on('agent/pre-step', async (payload, next) => {
     // Egress first, fenced on rode-once (see egress.js); warn-only.
