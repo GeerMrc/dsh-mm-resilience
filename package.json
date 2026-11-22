@@ -49,5 +49,21 @@
     "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-rc.5",
     "@deepseek-ai/dsh-client-ui-settings": "0.2.2-rc.5",
     "typescript": "^7.0.2"
-  }
+  },
+  "files": [
+    "src",
+    "client",
+    "locale",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GeerMrc/dsh-mm-resilience.git"
+  },
+  "bugs": {
+    "url": "https://github.com/GeerMrc/dsh-mm-resilience/issues"
+  },
+  "homepage": "https://github.com/GeerMrc/dsh-mm-resilience#readme"
 }
