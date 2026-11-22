@@ -16,7 +16,6 @@ import assert from 'node:assert/strict'
 
 import { createDescriber } from '../src/describe.js'
 
-const refFor = (attachmentId) => ({ attachmentId, mediaType: 'image/png', width: 10, height: 10, bytes: 5 })
 
 const ref = (attachmentId) => ({ attachmentId, mediaType: 'image/png', width: 10, height: 10, bytes: 5 })
 const baseConfig = {

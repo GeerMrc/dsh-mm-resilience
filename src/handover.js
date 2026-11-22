@@ -86,10 +86,15 @@ export function reconcileTakeover(settings, effectivePixels) {
     .filter((row) => row.overrideRow === undefined)
     .map((row) => ({ op: 'set', path: ['providers', row.route, 'requestImagePixelBudget'], value: effectivePixels }))
   if (ops.length === 0) return
-  // Promise.resolve guards a synchronously-throwing settings.mutate — the
-  // documented "never blocks startup" contract must hold even for bad hosts.
-  return Promise.resolve(settings.mutate(LLM_NS, ops, descriptor.revision))
-    .catch((error) => warn(`takeover reconcile write failed: ${error?.message ?? error}`))
+  // Sync-throw + async-reject both caught: Promise.resolve alone cannot
+  // wrap an argument expression that throws before it is invoked.
+  try {
+    return Promise.resolve(settings.mutate(LLM_NS, ops, descriptor.revision))
+      .catch((error) => warn(`takeover reconcile write failed: ${error?.message ?? error}`))
+  } catch (error) {
+    warn(`takeover reconcile write failed: ${error?.message ?? error}`)
+    return Promise.resolve()
+  }
 }
 
 /**
@@ -113,7 +118,13 @@ export function revertHandover(settings, effectivePixels) {
     .filter((row) => row.overrideRow === effectivePixels)
     .map((row) => ({ op: 'unset', path: ['providers', row.route, 'requestImagePixelBudget'] }))
   if (ops.length === 0) return
-  // Same synchronous-throw guard as reconcileTakeover.
-  return Promise.resolve(settings.mutate(LLM_NS, ops, descriptor.revision))
-    .catch((error) => warn(`handover revert write failed: ${error?.message ?? error}`))
+  // Sync-throw + async-reject both caught: Promise.resolve alone cannot
+  // wrap an argument expression that throws before it is invoked.
+  try {
+    return Promise.resolve(settings.mutate(LLM_NS, ops, descriptor.revision))
+      .catch((error) => warn(`handover revert write failed: ${error?.message ?? error}`))
+  } catch (error) {
+    warn(`handover revert write failed: ${error?.message ?? error}`)
+    return Promise.resolve()
+  }
 }

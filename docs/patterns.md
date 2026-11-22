@@ -1,7 +1,7 @@
 # DSH 插件开发可复用模式（patterns / 经验沉淀）
 
 > 基线钉版：`dsh-v0.2.2-rc.5` tag（harness 仓）。每次 DSH 升级后重验 file:line。
-> 每条模式遵循项目四要素纪律：场景 / 机制 / 配方 / 禁忌（含反例）。
+> P1-P5 遵循四要素纪律：场景 / 机制 / 配方 / 禁忌（含反例）；P6 为跨切纪律汇总表。
 
 ---
 
@@ -55,6 +55,10 @@
 3. `locale/en.json` 同理指向 `.en.md`
 4. README 顶部注明分工（开发者 vs 用户）
 5. 契约测试锁定路径合法性与文件存在性
+
+**禁忌**：
+- ❌ 不要让 `meta.detail` 指向 README 期望回退——命名文件不存在时**硬错不回退**
+- ❌ 路径不要含反斜杠、URL scheme、`.`/`..` 段——官方路径校验直接拒绝
 
 **验证**：本插件 `tests/contract.test.js` meta.detail 断言
 
@@ -115,7 +119,9 @@ function apply(ctx) {
 
 **场景**：npm 发布的官方 UI 组件包（如 `dsh-client-ui-primitives`）无法在 node 直接 import（"环境即宿主"式捆绑，所有依赖声明为宿主提升）。
 
-**方法**：
+**机制**：npm 发布的 UI 组件包带 `./src/*` TS 源码导出；tsc 可本地编译出纯 JS 模型（无 CSS/重型依赖）。
+
+**配方**：
 1. `pnpm add -D @deepseek-ai/dsh-client-ui-primitives@<exact>`（利用 `./src/*` TS 源码导出）
 2. `pretest` 脚本用 tsc 编译关键文件到 `.compiled/`：
    ```sh
@@ -126,7 +132,9 @@ function apply(ctx) {
 4. `.compiled/` 加入 `.gitignore`（每次测试重新编译 = 类型兼容检查）
 5. CSS/重型无关依赖（katex/shiki/micromark）用 stub loader 挡住
 
-**有状态 vs 静态假件**：模拟双向数据流（edit→dirty→save→land→reset→conflict）时假件必须有状态——静态假件曾让 revert 路径静默漏测。
+**禁忌**：
+- ❌ 关键链路（保存/重置/交还）禁止仅用静态假件——模拟双向数据流（edit→dirty→save→land→reset→conflict）时假件必须有状态；静态假件曾让 revert 路径静默漏测。
+- ❌ 不要裸 `import '@deepseek-ai/dsh-client-ui-primitives'`——它是"环境即宿主"式捆绑（零依赖声明），需 stub loader。
 
 **验证**：`tests/repro-form-model.test.js V1.A-V1.H`（真模型 8 场景全链路）
 

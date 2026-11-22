@@ -94,10 +94,10 @@ test('revert: absent service / no matching rows / throwing mutate — warn-only,
   await revertHandover(quiet, DEFAULT)
   assert.equal(quiet.calls.length, 0)
   const throwing = fakeSettings({ routes: [{ route: 'sz', overrideRow: DEFAULT }], mutateImpl: async () => { throw new Error('reload race') } })
-  await assert.doesNotThrow(() => revertHandover(throwing, DEFAULT))
+  await assert.doesNotReject(async () => { revertHandover(throwing, DEFAULT) })
   const throwingDescribe = { describe: () => { throw new Error('busy') }, mutate: async () => {} }
-  await assert.doesNotThrow(() => revertHandover(throwingDescribe, DEFAULT))
-  await assert.doesNotThrow(() => reconcileTakeover(throwingDescribe, 1_048_576))
+  await assert.doesNotReject(async () => { revertHandover(throwingDescribe, DEFAULT) })
+  await assert.doesNotReject(async () => { reconcileTakeover(throwingDescribe, 1_048_576) })
 })
 
 test('user-layer fallback: value/base divergence detects an override row when the user projection omits it', async () => {
