@@ -86,7 +86,9 @@ export function reconcileTakeover(settings, effectivePixels) {
     .filter((row) => row.overrideRow === undefined)
     .map((row) => ({ op: 'set', path: ['providers', row.route, 'requestImagePixelBudget'], value: effectivePixels }))
   if (ops.length === 0) return
-  return settings.mutate(LLM_NS, ops, descriptor.revision)
+  // Promise.resolve guards a synchronously-throwing settings.mutate — the
+  // documented "never blocks startup" contract must hold even for bad hosts.
+  return Promise.resolve(settings.mutate(LLM_NS, ops, descriptor.revision))
     .catch((error) => warn(`takeover reconcile write failed: ${error?.message ?? error}`))
 }
 
@@ -111,6 +113,7 @@ export function revertHandover(settings, effectivePixels) {
     .filter((row) => row.overrideRow === effectivePixels)
     .map((row) => ({ op: 'unset', path: ['providers', row.route, 'requestImagePixelBudget'] }))
   if (ops.length === 0) return
-  return settings.mutate(LLM_NS, ops, descriptor.revision)
+  // Same synchronous-throw guard as reconcileTakeover.
+  return Promise.resolve(settings.mutate(LLM_NS, ops, descriptor.revision))
     .catch((error) => warn(`handover revert write failed: ${error?.message ?? error}`))
 }

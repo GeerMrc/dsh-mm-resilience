@@ -235,13 +235,18 @@ test('summary view renders a plain one-liner span', async () => {
 
 test('disable handover: plugin-manager/changed with our bundle disabled unsets rows equal to the committed value', async () => {
   const { moduleExports } = await loadClient()
-  const llmForm = formFor('llm-pi-ai')
-  llmForm.getSnapshot = () => ({
-    status: 'ready', revision: 4, writable: true,
-    value: { providers: { sz: { requestImagePixelBudget: 1_048_576 }, zai: { requestImagePixelBudget: 262_144 } } },
-    user: { providers: { sz: { requestImagePixelBudget: 1_048_576 }, zai: { requestImagePixelBudget: 262_144 } } },
-    base: { providers: { sz: { requestImagePixelBudget: 4_194_304 }, zai: { requestImagePixelBudget: 4_194_304 } } },
-  })
+  // Simple recording fake: always accepts, records ops/revision.
+  const mutateCalls = []
+  const llmForm = {
+    getSnapshot: () => ({
+      status: 'ready', revision: 4, writable: true,
+      value: { providers: { sz: { requestImagePixelBudget: 1_048_576 }, zai: { requestImagePixelBudget: 262_144 } } },
+      user: { providers: { sz: { requestImagePixelBudget: 1_048_576 }, zai: { requestImagePixelBudget: 262_144 } } },
+      base: { providers: { sz: { requestImagePixelBudget: 4_194_304 }, zai: { requestImagePixelBudget: 4_194_304 } } },
+    }),
+    subscribe: () => () => {},
+    mutate: async (ops, expectedRevision) => { mutateCalls.push({ ops: structuredClone(ops), expectedRevision }); return true },
+  }
   const ownForm = formFor('mm-resilience')
   const ownBase = ownForm.getSnapshot()
   ownForm.getSnapshot = () => ({ ...ownBase, value: { ...ownBase.value, maxImagePixels: 1_048_576 } })
@@ -253,13 +258,14 @@ test('disable handover: plugin-manager/changed with our bundle disabled unsets r
   fakeCtx.bundles = [{ name: 'dsh-mm-resilience', enabled: true }]
   watch.listener()
   await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(mutateCalls.length, 0, 'enabled: no writes')
   // Disabled -> guarded unset: sz (ours) reverts, zai (manual) survives.
   fakeCtx.bundles = [{ name: 'dsh-mm-resilience', enabled: false }]
   watch.listener()
   await new Promise((resolve) => setTimeout(resolve, 10))
-  assert.equal(llmForm.mutateCalls.length, 1)
-  assert.deepEqual(llmForm.mutateCalls[0].ops, [{ op: 'unset', path: ['providers', 'sz', 'requestImagePixelBudget'] }])
-  assert.equal(llmForm.mutateCalls[0].expectedRevision, 4)
+  assert.equal(mutateCalls.length, 1)
+  assert.deepEqual(mutateCalls[0].ops, [{ op: 'unset', path: ['providers', 'sz', 'requestImagePixelBudget'] }])
+  assert.equal(mutateCalls[0].expectedRevision, 4)
 })
 
 test('fan-out: set ops to every provider route, revision-fenced with one conflict retry', async () => {

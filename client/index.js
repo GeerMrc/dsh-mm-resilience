@@ -5,9 +5,10 @@
  * the dsh-subagent-plus exemplar that runs on the installed 0.2.2-rc.3.
  *
  * The Plugins-page card mirrors the OFFICIAL 「子智能体」 card exactly
- * (SubagentCard.tsx pattern): flat sections with h3 headings, the official
- * SettingsForm save bar, SettingsValueField fields (已覆盖 badge, 恢复默认),
- * a Tooltip ⓘ beside each section heading, and a
+ * (SubagentCard.tsx pattern): flat single region, the official SettingsForm
+ * save bar, SettingsValueField fields (已覆盖 badge suppressed; own
+ * 恢复-default control at the field head's top-right), per-field label
+ * inline Tooltip ⓘ, and a
  * SettingsFormModel over ctx.configForms.get('mm-resilience'), hoisted to
  * apply() with plugin-lifetime disposal (StrictMode-safe). No hand-drawn
  * control chrome remains. Schema defaults ARE the official takeover values,
@@ -325,7 +326,16 @@ window.__ModuleLoader__.load({
                 ? [{ op: 'unset', path: ['providers', route, 'requestImagePixelBudget'] }]
                 : []
             })
-            if (ops.length > 0) await llmForm.mutate(ops, snapshot.revision)
+            if (ops.length > 0) {
+              let accepted = await llmForm.mutate(ops, snapshot.revision)
+              if (!accepted) {
+                // Revision conflict (concurrent edit) — one re-read retry,
+                // mirroring fanOutPixelBudget; warn on final failure.
+                const retry = llmForm.getSnapshot()
+                accepted = await llmForm.mutate(ops, retry.revision)
+              }
+              if (!accepted) console.warn('[mm-resilience] disable handover: revision conflict, row(s) not cleared')
+            }
           } catch (error) {
             console.warn('[mm-resilience] disable handover skipped:', error?.message ?? error)
           }

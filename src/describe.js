@@ -25,8 +25,8 @@ const DESCRIBE_PROMPT =
 const DESCRIBE_MAX_TOKENS = 400
 
 /** Per-call timeout and hard batch budget — fixed guardrails (not user-facing). */
-export const DESCRIBE_TIMEOUT_MS = 10_000
-export const DESCRIBE_TOTAL_BUDGET_MS = 15_000
+const DESCRIBE_TIMEOUT_MS = 10_000
+const DESCRIBE_TOTAL_BUDGET_MS = 15_000
 
 /**
  * @param {object} deps
@@ -98,7 +98,6 @@ export function createDescriber({ llm, configRef, timeoutMs = DESCRIBE_TIMEOUT_M
    * @param {AbortSignal} [signal] - the claiming turn's cancellation signal.
    */
   async function describeImages(refs, route, signal) {
-    const config = configRef()
     const results = new Map()
     if (refs.length === 0 || route === null || typeof route?.provider !== 'string' || typeof route?.model !== 'string') {
       return results
