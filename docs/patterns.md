@@ -1,0 +1,145 @@
+# DSH 插件开发可复用模式（patterns / 经验沉淀）
+
+> 基线钉版：`dsh-v0.2.2-rc.5` tag（harness 仓）。每次 DSH 升级后重验 file:line。
+> 每条模式遵循项目四要素纪律：场景 / 机制 / 配方 / 禁忌（含反例）。
+
+---
+
+## P1. 上下文注入行——后端注入内容走官方折叠行
+
+**场景**：插件需向模型注入描述/标签等内容，但不能污染用户的聊天气泡（前端与原生 DSH 交互一致原则）。
+
+**机制**（rc.5 源码已核验）：
+- DSH 聊天窗对 `source.kind ≠ 'user'` 的 `user/message` **一律渲染为"上下文注入行"**——折叠细行（图标+标题，点击展开正文），同技能目录/工作区指令/会话召回的呈现方式
+- `event-projection.ts:56-72` 对自定义 kind 一等支持：`{role:'inject', label: kind 字符串}`（"MessageSourceMap is merge-extensible; keep an unknown producer visible by its durable kind"）
+- `KNOWN_FORMS` 六值菜单（`event-projection.ts:38-39`）：
+
+| form 值 | 语义 | 适用 |
+|---|---|---|
+| `instructions` | 工作区指令 | AGENTS.md |
+| `catalog` | 技能目录 | 技能列表 |
+| `snapshot` | 快照 | 会话快照 |
+| `notice` | **通知** | 机器描述等插件注入 |
+| `relay` | 中继 | 转发 |
+| `recall` | 召回 | 跨会话引用 |
+
+**配方**：
+1. 在 `agent/pre-step` 回调中，**不修改用户消息**（仅打 `offloaded:true` 等标记）
+2. 构造独立消息：`{id: crypto.randomUUID(), role:'user', content:[{type:'text',text:'…'}], source:{kind:'<命名空间化-kind>', form:'notice'}}`
+3. 追加到 `decision.messages` 数组末尾（循环原样持久化）
+4. 无内容可注入 → 返回 `null` → **不产生任何行**（连折叠行都没有）
+
+**禁忌**：
+- ❌ 不要把描述文本写进用户消息的 content（气泡污染，用户实测否决）
+- ❌ 不要用 `source.kind = 'runtime-context'`（循环会替换丢弃）
+- ❌ kind 字符串是可见的 producer 标签——**命名空间化**（如 `mm-image-archive` 而非 `archive`）
+- 反例：隐身模式（描述不落任何表面）被否决——违反"模型可见⟺日志记录"铁律
+
+**验证**：本插件 `src/blocks.js archiveContextMessage` + `tests/blocks.test.js` + `tests/integration.test.js A`
+
+---
+
+## P2. 插件页文档分离——meta.detail 双语用户文档
+
+**场景**：插件页默认回退渲染 README.md（开发者内容直达终端用户，不合适）。
+
+**机制**（rc.5 `boot/plugin-manager/src/bundle-detail.ts` + `util/plugin-detail/README.md`）：
+- 文档顺序：① locale `<lang>.json` 的 `meta.detail` 指定文件 → ② 包 README → ③ 市场条目仓库 README
+- **语言链**：`zh-Hans-CN` 依次读 `locale/zh-hans-cn.json`→`zh-hans.json`→`zh.json`→`en.json`
+- **路径规则**：`/` 分隔、包根相对、`.md`/`.markdown` 后缀、无 `./..` 空段、无反斜杠、无 URL scheme
+- **命名文件不存在 = 硬错**（不回退 README）
+
+**配方**：
+1. 写 `docs/plugin-page.zh.md` + `docs/plugin-page.en.md`（用户向：一句话定位+设置项+行为要点）
+2. `locale/zh.json`：`{"meta":{"title":"…","description":"…","detail":"docs/plugin-page.zh.md"}}`
+3. `locale/en.json` 同理指向 `.en.md`
+4. README 顶部注明分工（开发者 vs 用户）
+5. 契约测试锁定路径合法性与文件存在性
+
+**验证**：本插件 `tests/contract.test.js` meta.detail 断言
+
+---
+
+## P3. 设置卡官方同构——控制器提升与 StrictMode 陷阱
+
+**场景**：插件设置卡须与官方「子智能体」卡视觉/交互一致。
+
+**机制**：
+- 官方模式 = 全套复用 `@deepseek-ai/dsh-client-ui-primitives`（SettingsForm/SettingsValueField/SettingsFormModel/settingsNumberField/Tooltip）
+- **控制器必须提升至 `apply()`**（插件生命周期），**禁止在组件 `useState` 内创建 + `useEffect` 卸载时 dispose**——React StrictMode 双挂载回放中模型死而不再建，编辑永不重渲染，保存永久置灰
+
+**配方**：
+```js
+function apply(ctx) {
+  const controller = createCardController(ctx.configForms.get(NS)) // once
+  ctx.effect(() => () => controller.dispose()) // plugin lifetime
+  ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
+    name: 'plugins.bundle.config', key: PKG_NAME, locale: NS
+  }, (props) => createElement(Card, {ctx, t, controller})))
+}
+```
+- 卡片结构：单一区域 + auto-fit 网格 + 每字段标签内联 Tooltip ⓘ
+- 布局 CSS 仅 7 条官方值规则（`.section padding:16px 0` / `.heading 13px/600` 等）
+
+**禁忌**：
+- ❌ 不手绘输入框/开关/保存条（官方组件自带完整交互链）
+- ❌ 不在组件内 dispose 模型（StrictMode 双挂载致命）
+
+**验证**：本插件 `client/index.js` + `tests/repro-form-model.test.js V1.F`（重挂载安全回归）
+
+---
+
+## P4. 对称接管/交还——官方配置行的双向管理
+
+**场景**：插件"接管"官方参数（如 `requestImagePixelBudget`），须在禁用时自动"交还"。
+
+**机制**：
+- **接管**（`apply()` 对账）：有效值≠官方默认 → 仅补覆盖层**缺失**的路由行（显式值路由禁碰）
+- **交还**（禁用时，双通道）：
+  - 宿主 dispose 钩子（HMR 宿主）
+  - **客户端 `plugin-manager/changed` 事件监听**（桌面主通道：无 HMR 宿主的 bundle 开关不卸载 fiber，但该事件经官方 remotes 转发，Web 客户端在重启前窗口存活）
+- **守卫规则**：仅 unset 仍等于插件应用值的行；手工差异值永远保留
+- **行存在性判定**：user 层（首选）→ value≠base 且 base 路由存在（回退）；仅用户层路由 = 缺失
+
+**配方**：见 `src/handover.js`（`reconcileTakeover` + `revertHandover`）与 `client/index.js watchDisableHandover`（含 C1 冲突重试）
+
+**禁忌**：
+- ❌ 无 HMR 桌面端不要依赖 dispose 钩子做禁用交还（`reload()` 只静态重组不卸载 fiber）
+- ❌ 不要 unset 值不等于自己应用值的行（用户手工值会被误删）
+
+**验证**：`tests/handover.test.js`（8 项）+ `tests/client.test.js` disable handover 测试
+
+---
+
+## P5. 真模型测试方法——关键链路禁仅假件
+
+**场景**：npm 发布的官方 UI 组件包（如 `dsh-client-ui-primitives`）无法在 node 直接 import（"环境即宿主"式捆绑，所有依赖声明为宿主提升）。
+
+**方法**：
+1. `pnpm add -D @deepseek-ai/dsh-client-ui-primitives@<exact>`（利用 `./src/*` TS 源码导出）
+2. `pretest` 脚本用 tsc 编译关键文件到 `.compiled/`：
+   ```sh
+   tsc node_modules/@deepseek-ai/dsh-client-ui-primitives/src/settings-form/form-model.ts \
+     --outDir .compiled --module es2022 --target es2022 --skipLibCheck
+   ```
+3. 测试导入 `.compiled/form-model.js` 获得真实官方模型
+4. `.compiled/` 加入 `.gitignore`（每次测试重新编译 = 类型兼容检查）
+5. CSS/重型无关依赖（katex/shiki/micromark）用 stub loader 挡住
+
+**有状态 vs 静态假件**：模拟双向数据流（edit→dirty→save→land→reset→conflict）时假件必须有状态——静态假件曾让 revert 路径静默漏测。
+
+**验证**：`tests/repro-form-model.test.js V1.A-V1.H`（真模型 8 场景全链路）
+
+---
+
+## P6. 跨切纪律
+
+| 纪律 | 要点 |
+|---|---|
+| **CHANGELOG 四要素** | bug 类：现象/根因/修复/预防；定夺类：现象/定夺/实现/锁定 |
+| **版本对齐** | 桌面每次升级后核对 devDeps/tag 对齐；审核一律引用最新 tag |
+| **Warn-only 降级** | 任何插件辅助功能不得阻塞主流程——try/catch + console.warn + 自愈兜底 |
+| **无条件注册** | 插件页卡片注册不套 whileServed（宿主 ns 问题时整卡静默消失） |
+| **volatile 解包** | schemastery volatile 字段解析为 `{get()}` 句柄；`materializeConfig` 统一读取 |
+| **peerDeps 精确钉版** | `>=x.y.z-rc.a <major+1`；registry latest 可能指向占位版——用 next tag |
+| **`private:true` 保留** | 发布日才移除（与契约测试同步） |
