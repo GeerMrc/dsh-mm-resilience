@@ -286,7 +286,52 @@ window.__ModuleLoader__.load({
         shell.available && note ? createElement('span', { className: 'mmrr-note', role: 'status' }, note) : null)
     }
 
-    const inject = ['slots', 'locale', 'configForms']
+    const inject = ['slots', 'locale', 'remote', 'configForms']
+
+    /**
+     * Desktop-effective disable handover: on a no-HMR host the bundle switch
+     * does NOT unload fibers, so the host-side dispose hook never fires
+     * there — but the Web client stays alive until restart, and the Host
+     * forwards `plugin-manager/changed` after every profile change. On each
+     * event: if our bundle is no longer enabled, hand the pixel budget back
+     * (guarded unset — only rows still equal to the plugin's committed
+     * effective value; divergent manual rows survive). Idempotent with the
+     * host-side hook (the second pass finds no matching rows).
+     */
+    function watchDisableHandover(ctx) {
+      return ctx.remote.$on('plugin-manager/changed', () => {
+        void (async () => {
+          try {
+            const bundles = await ctx.remote.pluginManager.listBundles()
+            const own = Array.isArray(bundles) ? bundles.find((bundle) => bundle?.name === BUNDLE_KEY) : undefined
+            if (own !== undefined && own.enabled === true) return
+            const ownForm = ctx.configForms.get(NS)
+            const llmForm = ctx.configForms.get(LLM_NS)
+            const effective = ownForm.getSnapshot().value?.maxImagePixels
+            if (typeof effective !== 'number' || !Number.isFinite(effective)) return
+            const snapshot = llmForm.getSnapshot()
+            const providers = snapshot.value?.providers
+            if (providers === undefined || providers === null || typeof providers !== 'object') return
+            const userProviders = snapshot.user?.providers
+            const baseProviders = snapshot.base?.providers
+            const ops = Object.keys(providers).flatMap((route) => {
+              const valueRow = providers[route]?.requestImagePixelBudget
+              const userRow = userProviders?.[route]?.requestImagePixelBudget
+              const baseRow = baseProviders?.[route]?.requestImagePixelBudget
+              const overrideRow = userRow !== undefined
+                ? userRow
+                : baseRow !== undefined && valueRow !== baseRow ? valueRow : undefined
+              return overrideRow === effective
+                ? [{ op: 'unset', path: ['providers', route, 'requestImagePixelBudget'] }]
+                : []
+            })
+            if (ops.length > 0) await llmForm.mutate(ops, snapshot.revision)
+          } catch (error) {
+            console.warn('[mm-resilience] disable handover skipped:', error?.message ?? error)
+          }
+        })()
+      })
+    }
 
     /** One card controller per plugin lifetime (official web-search pattern):
      * the SettingsFormModel is created once, bound once, and disposed only
@@ -318,6 +363,7 @@ window.__ModuleLoader__.load({
       })
       const controller = createCardController(ctx.configForms.get(NS))
       ctx.effect(() => () => { controller.dispose() }, 'mm-resilience: form subscription')
+      ctx.effect(() => watchDisableHandover(ctx), 'mm-resilience: disable handover watch')
       // Unconditional: the configured-ledger gate needs this live registration,
       // and the card renders the official unavailable state when unserved.
       ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({

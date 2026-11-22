@@ -167,6 +167,7 @@ async function mountCard(preparedScope) {
   const registrations = []
   const ctx = {
     locale: { bind: () => (key) => key, register: () => {} },
+    remote: { $on: () => () => {}, pluginManager: { listBundles: async () => [{ name: 'dsh-mm-resilience', enabled: true }] } },
     configForms: { get: (ns) => (ns === 'mm-resilience' ? scope : undefined) },
     slots: {
       inject: (name, register) => register(),
@@ -293,6 +294,7 @@ test('V1.F StrictMode/remount safety: hoisted controller survives remount; edits
   const registrations = []
   const ctx = {
     locale: { bind: () => (key) => key, register: () => {} },
+    remote: { $on: () => () => {}, pluginManager: { listBundles: async () => [{ name: 'dsh-mm-resilience', enabled: true }] } },
     configForms: { get: (ns) => (ns === 'mm-resilience' ? scope : undefined) },
     slots: {
       inject: (name, register) => register(),

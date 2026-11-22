@@ -146,9 +146,17 @@ function formFor(ns) {
 
 function fakeCtx({ forms = {} } = {}) {
   const registrations = []
+  const listeners = []
   const ctx = {
     locale: { bind: () => (key) => key, register: () => {} },
     configForms: { get: (ns) => forms[ns] ?? formFor(ns) },
+    remote: {
+      $on: (event, listener) => {
+        listeners.push({ event, listener })
+        return () => {}
+      },
+      pluginManager: { listBundles: async () => fakeCtx.bundles ?? [] },
+    },
     slots: {
       inject: (name, register) => register(),
       register: (options, render) => { registrations.push({ options, render }) },
@@ -158,14 +166,15 @@ function fakeCtx({ forms = {} } = {}) {
       return typeof dispose === 'function' ? dispose : () => {}
     },
   }
-  return { ctx, registrations }
+  return { ctx, registrations, listeners }
 }
+fakeCtx.bundles = [{ name: 'dsh-mm-resilience', enabled: true }]
 
 test('factory: package-name id, apply/inject exports', async () => {
   const { registration, moduleExports } = await loadClient()
   assert.equal(registration.id, 'dsh-mm-resilience')
   assert.equal(typeof moduleExports.apply, 'function')
-  assert.deepEqual(moduleExports.inject, ['slots', 'locale', 'configForms'])
+  assert.deepEqual(moduleExports.inject, ['slots', 'locale', 'remote', 'configForms'])
 })
 
 test('apply: unconditional plugins.bundle.config registration keyed by package name', async () => {
@@ -222,6 +231,35 @@ test('summary view renders a plain one-liner span', async () => {
   moduleExports.apply(ctx)
   const summary = registrations[0].render({ view: 'summary' })
   assert.equal(summary.type, 'span')
+})
+
+test('disable handover: plugin-manager/changed with our bundle disabled unsets rows equal to the committed value', async () => {
+  const { moduleExports } = await loadClient()
+  const llmForm = formFor('llm-pi-ai')
+  llmForm.getSnapshot = () => ({
+    status: 'ready', revision: 4, writable: true,
+    value: { providers: { sz: { requestImagePixelBudget: 1_048_576 }, zai: { requestImagePixelBudget: 262_144 } } },
+    user: { providers: { sz: { requestImagePixelBudget: 1_048_576 }, zai: { requestImagePixelBudget: 262_144 } } },
+    base: { providers: { sz: { requestImagePixelBudget: 4_194_304 }, zai: { requestImagePixelBudget: 4_194_304 } } },
+  })
+  const ownForm = formFor('mm-resilience')
+  const ownBase = ownForm.getSnapshot()
+  ownForm.getSnapshot = () => ({ ...ownBase, value: { ...ownBase.value, maxImagePixels: 1_048_576 } })
+  const { ctx, registrations, listeners } = fakeCtx({ forms: { 'llm-pi-ai': llmForm, 'mm-resilience': ownForm } })
+  moduleExports.apply(ctx)
+  const watch = listeners.find((entry) => entry.event === 'plugin-manager/changed')
+  assert.ok(watch, 'disable-handover watch registered')
+  // Enabled -> no-op.
+  fakeCtx.bundles = [{ name: 'dsh-mm-resilience', enabled: true }]
+  watch.listener()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  // Disabled -> guarded unset: sz (ours) reverts, zai (manual) survives.
+  fakeCtx.bundles = [{ name: 'dsh-mm-resilience', enabled: false }]
+  watch.listener()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(llmForm.mutateCalls.length, 1)
+  assert.deepEqual(llmForm.mutateCalls[0].ops, [{ op: 'unset', path: ['providers', 'sz', 'requestImagePixelBudget'] }])
+  assert.equal(llmForm.mutateCalls[0].expectedRevision, 4)
 })
 
 test('fan-out: set ops to every provider route, revision-fenced with one conflict retry', async () => {

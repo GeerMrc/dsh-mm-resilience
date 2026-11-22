@@ -14,10 +14,14 @@
  *   divergent manual values survive; equal-to-default historical rows are
  *   cleaned (behaviourally a no-op, presence restored to official inherit).
  *
- * Both paths are warn-only: a failing settings call never blocks plugin
- * startup and never breaks teardown (the apply-time reconcile self-heals a
- * missed revert on the next start; a missed revert while disabled equals
- * the previous behaviour and is disclosed in the README).
+ * The disable-time revert rides TWO channels because the desktop host has
+ * no HMR: there the bundle switch does NOT unload fibers (rc.5 reload()
+ * only recomposes statically), so this dispose hook fires only on HMR
+ * hosts; the desktop-effective channel is the CLIENT half's
+ * plugin-manager/changed watch (client/index.js). Both are warn-only: a
+ * failing settings call never blocks startup or teardown. A missed revert
+ * (web client closed at disable time) leaves rows active until the next
+ * enable + card save + disable, or manual removal — disclosed in README.
  *
  * @module dsh-mm-resilience/handover
  */
@@ -42,9 +46,14 @@ function routeRows(descriptor) {
     const valueRow = providers[route]?.requestImagePixelBudget
     const userRow = userProviders?.[route]?.requestImagePixelBudget
     const baseRow = baseProviders?.[route]?.requestImagePixelBudget
+    // Fallback only for routes present in the base layer: a route authored
+    // solely in the user profile has baseRow undefined and valueRow
+    // materialized by schema defaults — that is an ABSENT row, not an
+    // override (a phantom "present" would break the reconcile backstop and
+    // cause recurring no-op unsets at default effective).
     const overrideRow = userRow !== undefined
       ? userRow
-      : valueRow !== baseRow ? valueRow : undefined
+      : baseRow !== undefined && valueRow !== baseRow ? valueRow : undefined
     return { route, overrideRow }
   })
 }

@@ -110,3 +110,25 @@ test('user-layer fallback: value/base divergence detects an override row when th
   await revertHandover(settings, 1_048_576)
   assert.deepEqual(settings.calls[0].ops, [{ op: 'unset', path: ['providers', 'sz', 'requestImagePixelBudget'] }])
 })
+
+test('F1 regression: user-layer-only route (absent from base) is ABSENT — reconcile fills it, revert never phantom-unsets', async () => {
+  // Route 'manual' exists only in the user profile patch (added on the
+  // Models page); base lacks it. valueRow is the schema-materialized default.
+  const DEFAULT2 = 4_194_304
+  const providers = { manual: { requestImagePixelBudget: DEFAULT2 }, sz: { requestImagePixelBudget: DEFAULT2 } }
+  const user = { providers: {} }                       // no budget rows anywhere
+  const base = { providers: { sz: { requestImagePixelBudget: DEFAULT2 } } }  // manual NOT in base
+  const calls = []
+  const settings = {
+    describe: () => [{ ns: 'llm-pi-ai', revision: 5, value: { providers }, user, base: { providers: base.providers } }],
+    mutate: async (ns, ops, revision) => { calls.push({ ns, ops, revision }) },
+  }
+  // Reconcile at custom effective: BOTH routes absent -> fill both (the
+  // backstop's stated purpose: routes added after the last save).
+  await reconcileTakeover(settings, 1_048_576)
+  assert.equal(calls[0].ops.length, 2)
+  // Revert at default effective: no phantom rows -> zero writes, no churn.
+  calls.length = 0
+  await revertHandover(settings, DEFAULT2)
+  assert.equal(calls.length, 0)
+})
