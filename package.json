@@ -32,7 +32,7 @@
     }
   },
   "scripts": {
-    "test": "node --loader ./tests/stub-css-loader.mjs --test tests/",
+    "test": "node --loader ./tests/stub-css-loader.mjs --test tests/*.test.js",
     "pretest": "tsc node_modules/@deepseek-ai/dsh-client-ui-primitives/src/settings-form/form-model.ts --outDir .compiled --module es2022 --target es2022 --moduleResolution bundler --skipLibCheck"
   },
   "license": "MIT",
