@@ -151,6 +151,7 @@ function apply(ctx) {
 | **volatile 解包** | schemastery volatile 字段解析为 `{get()}` 句柄；`materializeConfig` 统一读取 |
 | **peerDeps 精确钉版** | `>=x.y.z-rc.a <major+1`；registry latest 可能指向占位版——用 next tag |
 | **`private:true` 保留** | 发布日才移除（与契约测试同步） |
+| **版本-Tag-npm 三同步** | 每次推送 main 须有版本归属；正式变更（含文档）→ bump version → tag → push（CI 自动 npm publish）；**禁止推 main 不打 tag 不发 npm 的"悬空"变更** |
 
 ---
 
