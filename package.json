@@ -64,5 +64,6 @@
   "bugs": {
     "url": "https://github.com/GeerMrc/dsh-mm-resilience/issues"
   },
-  "homepage": "https://github.com/GeerMrc/dsh-mm-resilience#readme"
+  "homepage": "https://github.com/GeerMrc/dsh-mm-resilience#readme",
+  "packageManager": "pnpm@10.11.0"
 }
