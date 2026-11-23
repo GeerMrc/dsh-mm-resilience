@@ -1,6 +1,6 @@
 {
   "name": "dsh-mm-resilience",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "图片解析归档复用：每张图片首次入会时解析一次并归档打标，此后所有请求零图片字节重发，从根源避免多模态故障卡死会话；像素上限与每条消息解析（描述）上限接管官方默认值（可调、可恢复默认），多图解析并行数可配；原图按需回看（mm_view_image）。",
   "type": "module",
   "exports": {
@@ -55,7 +55,9 @@
     "locale",
     "cordis.patch.yml",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "docs/plugin-page.zh.md",
+    "docs/plugin-page.en.md"
   ],
   "repository": {
     "type": "git",
