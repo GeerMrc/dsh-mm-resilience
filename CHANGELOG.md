@@ -4,6 +4,15 @@
 
 本插件遵循版本纪律：v0.0.1 冻结至人工升版决策；全本地零远端发布。日期为本地时区。
 
+## 0.0.2（2026-11-23）
+
+### files 白名单遗漏 plugin-page docs——插件页详情区报错（四要素）
+
+- 现象：v0.0.1 npm 安装后，插件页 `dsh-mm-resilience` 详情文档区报错（`meta.detail` 指向包内不存在的文件）
+- 根因：package.json `files` 白名单只列了 `src/client/locale/cordis.patch.yml/README/CHANGELOG`，遗漏了 `docs/plugin-page.{zh,en}.md`——而 `locale/zh.json` 的 `meta.detail` 指向该文件；DSH 官方规则：命名文件不存在 = 硬错（`plugin-manager/detail-unavailable`），不回退 README
+- 修复：`files` 数组逐文件加入两个 plugin-page 文档（不加整个 `docs/` 目录——避免泄漏内部治理文档）；升版 v0.0.2 手动发布
+- 预防：patterns.md P7 沉淀；CI `npm pack --dry-run` 后应逐步断言 `meta.detail` 目标文件在 tarball 内（待加）
+
 ## 0.0.1（未发布）
 
 ### 2026-11-23 对称接管/交还：禁用插件自动交还官方像素预算（用户定夺）

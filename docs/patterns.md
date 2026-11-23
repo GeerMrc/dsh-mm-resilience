@@ -151,3 +151,104 @@ function apply(ctx) {
 | **volatile 解包** | schemastery volatile 字段解析为 `{get()}` 句柄；`materializeConfig` 统一读取 |
 | **peerDeps 精确钉版** | `>=x.y.z-rc.a <major+1`；registry latest 可能指向占位版——用 next tag |
 | **`private:true` 保留** | 发布日才移除（与契约测试同步） |
+
+---
+
+## P7. npm 发布 files 白名单——meta.detail 引用的文件必须入包
+
+**场景**：插件使用 `meta.detail` 指向 `docs/plugin-page.{zh,en}.md`（P2 模式），但 npm 发布时 `files` 白名单遗漏了该文件——`meta.detail` 指向包内不存在的文件 = 官方规则**硬错**（不回退 README）→ 插件页报错。
+
+**机制**：
+- `files` 字段是 npm pack 的**白名单**——不在列表中的目录/文件不会进入 tarball
+- `docs/` 目录同时包含内部治理文档（设计决策/故障报告等，不应公开）和用户文档（plugin-page，必须入包）——**不能整目录包含，须逐文件列出**
+- DSH 官方规则：`meta.detail` 指向的文件不存在 = `plugin-manager/detail-unavailable` 错误（reason: `invalid`），**不会回退渲染 README**
+
+**配方**：
+```json
+"files": [
+  "src", "client", "locale", "cordis.patch.yml",
+  "README.md", "CHANGELOG.md",
+  "docs/plugin-page.zh.md", "docs/plugin-page.en.md"
+]
+```
+
+**禁忌**：
+- ❌ 不要 `"files": ["docs"]`——会把内部治理文档（design-decisions.md / fault-report 等）泄漏到公开 npm 包
+- ❌ 不要凭记忆写 files 列表——发布前必跑 `npm pack --dry-run` 逐文件核对
+- ❌ 契约测试仅锁定 `meta.detail` 路径合法性与**源码仓**文件存在性——**不检查 npm tarball 内是否存在**（本 bugg 的根因）
+
+**预防**：发布流程中 `npm pack --dry-run` 后，**逐文件对照 `meta.detail` 值**确认目标文件在 tarball 内。可在 CI workflow 中加一步断言。
+
+**事故记录**（v0.0.1 → v0.0.2）：
+- 现象：v0.0.1 发布后插件页详情区报错（`meta.detail` 指向不存在的文件）
+- 根因：`files` 白名单遗漏 `docs/plugin-page.*.md`（设计时只排除了内部文档，忘了用户文档也在 docs/ 里）
+- 修复：`files` 数组逐文件加入两个 plugin-page 文档；升版 v0.0.2 发布
+- 教训：**契约测试须覆盖 npm tarball 内容物**（不仅仅是源码仓存在性）
+
+---
+
+## P8. npm 发布全链路——首次手动 + 后续 OIDC 自动化
+
+**场景**：第三方 DSH 插件首次发布到 npm，以及配置后续版本自动发布。
+
+**机制**（npm 2026 认证体系）：
+- npm 已关闭新 TOTP 注册——**Passkey/Security Key** 是唯一 2FA 形态
+- 手动发布 = npm ≥ 11.7 + **用户交互终端** + 浏览器弹 npmjs.com 认证 → Touch ID 确认
+- 自动发布 = **Trusted Publishing（OIDC）**：GitHub Actions `id-token: write` + npm ≥ 11.5.1 + `repository.url` 精确匹配
+- 本机默认 npmmirror（中国镜像）——**所有 npmjs 操作必须显式 `--registry https://registry.npmjs.org`**
+
+**配方**（完整发布流程）：
+
+**首次发布（手动）**：
+```sh
+# 1. 认证（交互终端，弹浏览器 Touch ID）
+npm login --registry https://registry.npmjs.org
+
+# 2. 移除 private:true + 对应契约测试断言（同笔提交）
+
+# 3. 打包验证（逐文件核对！）
+npm pack --dry-run
+
+# 4. 发布（弹浏览器 Passkey）
+npm publish ./dsh-mm-resilience-X.Y.Z.tgz \
+  --registry https://registry.npmjs.org --access public
+
+# 5. 三重验证
+npm view dsh-mm-resilience versions --registry https://registry.npmjs.org
+npm view dsh-mm-resilience dist.shasum --registry https://registry.npmjs.org
+shasum dsh-mm-resilience-X.Y.Z.tgz  # 须与上一行字节级一致
+```
+
+**OIDC 绑定（npmjs.com 包设置页，一次性）**：
+1. 包页面 → Settings → Trusted Publisher → Add
+2. 选 GitHub Actions，填 Owner / Repository / Workflow filename
+3. ☑ Allow `npm publish`
+4. 状态变为 "Pending validation"——**2 天内**须通过该 workflow 成功发布一次
+
+**后续版本（全自动）**：
+```sh
+git tag v0.0.3
+git push origin v0.0.3
+# → CI 自动：pnpm test → npm pack → GitHub Release → npm publish（OIDC）
+```
+
+**CI workflow 关键点**（`.github/workflows/release.yml`）：
+- `packageManager: "pnpm@10.11.0"` 必须在 package.json（否则 `pnpm/action-setup@v4` 报错）
+- `npm install -g npm@11` 在 publish 前（Node 22 镜像自带 npm 10.x，OIDC 需 ≥ 11.5.1）
+- 先推 main 再推 tag（GitHub 限制：同批推送不触发 workflow）
+
+**禁忌**：
+- ❌ 不要在 agent/no-TTY 环境跑 `npm publish`（EOTP 必败，认证 URL 随进程消亡）
+- ❌ 不要建 bypass-2FA granular token（2027-01 起失去直接发布资格）
+- ❌ 连续敏感操作失败会触发 24-72h 账号冻结——失败一次停手隔天再试
+- ❌ 裸包名可能被 npm 反抢注策略拒绝（dsh-websearch 先例）——备选 scoped name 或双名模式
+- ❌ npm 新发布 CDN 传播延迟 1~5 分钟（tarball 404 ≠ 发布失败；`dist.shasum` 在元数据中立即可查）
+
+**踩坑实录**：
+| 问题 | 根因 | 修复 |
+|---|---|---|
+| CI 首次运行 10s 失败 | package.json 缺 `packageManager` 字段 | 加 `"packageManager": "pnpm@10.11.0"` |
+| SSH 推送被拒 | SSH key 关联 `Tosu100` 而非 `GeerMrc` | 改 HTTPS + gh credential helper |
+| workflow 文件推送被拒 | gh token 缺 `workflow` scope | `gh auth refresh -s workflow`（浏览器 Touch ID） |
+| tarball 404（发布后） | CDN 传播延迟（正常） | 等待；`dist.shasum` 在元数据中已可验证 |
+| v0.0.1 插件页报错 | files 白名单遗漏 plugin-page docs | v0.0.2 逐文件加入（P7 详述） |
