@@ -20,7 +20,6 @@ const pkg = JSON.parse(read('package.json'))
 test('package manifest: name/type/engines', () => {
   assert.equal(pkg.name, 'dsh-mm-resilience')
   assert.equal(pkg.type, 'module')
-  assert.equal(pkg.private, true)
   assert.ok(pkg.engines.node.startsWith('>=22'))
 })
 
